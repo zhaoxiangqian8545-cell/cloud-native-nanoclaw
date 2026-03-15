@@ -47,6 +47,9 @@ export const config = {
     messageQueueArn: process.env.MESSAGE_QUEUE_ARN || '',
   },
 
+  // Webhook base URL for channel webhook registration
+  webhookBaseUrl: process.env.WEBHOOK_BASE_URL || '',
+
   // Concurrency
   maxConcurrentDispatches: Number(process.env.MAX_CONCURRENT_DISPATCHES) || 20,
 

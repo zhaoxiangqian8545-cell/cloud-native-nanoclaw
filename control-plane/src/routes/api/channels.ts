@@ -11,6 +11,7 @@ import {
 import { config } from '../../config.js';
 import {
   getBot,
+  updateBot,
   createChannel,
   getChannelsByBot,
   deleteChannel,
@@ -95,10 +96,13 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
 
     // 4. Build webhook URL
     const webhookBase =
-      process.env.WEBHOOK_BASE_URL || `https://${config.stage}.clawbot.ai`;
+      config.webhookBaseUrl || `https://${config.stage}.clawbot.ai`;
     const webhookUrl = `${webhookBase}/webhook/${body.channelType}/${botId}`;
 
-    // 5. Register webhook with channel provider (Telegram)
+    // 5. Register webhook with channel provider
+    let webhookRegistered = false;
+    let setupInstructions: string | undefined;
+
     if (body.channelType === 'telegram') {
       const webhookSecret = crypto.randomUUID();
       await telegram.setWebhook(
@@ -106,8 +110,15 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
         webhookUrl,
         webhookSecret,
       );
-      // Update the secret with webhook secret
-      // (In production, use UpdateSecret — for now we just included it in the initial create)
+      webhookRegistered = true;
+    } else {
+      // Discord, Slack, WhatsApp require manual webhook configuration
+      const instructions: Record<string, string> = {
+        discord: `Go to Discord Developer Portal > Application > "Interactions Endpoint URL" and set it to: ${webhookUrl}`,
+        slack: `Go to Slack App settings > "Event Subscriptions" > "Request URL" and set it to: ${webhookUrl}`,
+        whatsapp: `Go to Meta Developer Portal > WhatsApp > Configuration > "Callback URL" and set it to: ${webhookUrl}`,
+      };
+      setupInstructions = instructions[body.channelType];
     }
 
     // 6. Create channel record
@@ -117,7 +128,7 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
       channelId,
       credentialSecretArn: secretResult.ARN || secretName,
       webhookUrl,
-      status: 'connected',
+      status: webhookRegistered ? 'connected' : 'pending_webhook',
       healthStatus: 'healthy',
       consecutiveFailures: 0,
       config: verifiedInfo,
@@ -126,9 +137,15 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
 
     await createChannel(channel);
 
+    // Auto-activate bot when first channel is connected
+    if (bot.status === 'created') {
+      await updateBot(request.userId, botId, { status: 'active' });
+    }
+
     return reply.status(201).send({
       ...channel,
       credentialSecretArn: '[redacted]',
+      ...(setupInstructions ? { setupInstructions } : {}),
     });
   });
 
@@ -156,8 +173,11 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
         if (channelType === 'telegram') {
           await telegram.deleteWebhook(creds.botToken);
         }
-      } catch {
-        // Best effort — proceed with deletion even if unregister fails
+      } catch (err) {
+        request.log.warn(
+          { err, botId, channelType },
+          'Failed to unregister webhook — proceeding with channel deletion',
+        );
       }
 
       // Delete secret from Secrets Manager

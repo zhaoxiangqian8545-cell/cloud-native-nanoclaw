@@ -37,7 +37,7 @@ export interface Bot {
   description?: string;
   systemPrompt?: string;
   triggerPattern: string; // e.g. "@BotName"
-  status: 'active' | 'paused' | 'deleted';
+  status: 'created' | 'active' | 'paused' | 'deleted';
   containerConfig?: BotContainerConfig;
   createdAt: string;
   updatedAt: string;
@@ -59,7 +59,7 @@ export interface ChannelConfig {
   channelId: string;
   credentialSecretArn: string;
   webhookUrl: string;
-  status: 'connected' | 'disconnected' | 'error';
+  status: 'connected' | 'disconnected' | 'error' | 'pending_webhook';
   healthStatus: 'healthy' | 'unhealthy' | 'unknown';
   consecutiveFailures: number;
   config?: Record<string, unknown>;
@@ -231,7 +231,7 @@ export interface UpdateBotRequest {
   description?: string;
   systemPrompt?: string;
   triggerPattern?: string;
-  status?: 'active' | 'paused';
+  status?: 'active' | 'paused' | 'deleted';
 }
 
 export interface UpdateTaskRequest {

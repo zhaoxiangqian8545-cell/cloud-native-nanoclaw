@@ -63,6 +63,26 @@ function hexToUint8Array(hex: string): Uint8Array {
   return bytes;
 }
 
+// ── WhatsApp ────────────────────────────────────────────────────────────────
+// WhatsApp (Meta Cloud API) uses HMAC-SHA256 on the raw request body.
+// Header: X-Hub-Signature-256 (sha256=<hex>)
+
+export function verifyWhatsAppSignature(
+  rawBody: string,
+  signature: string,
+  appSecret: string,
+): boolean {
+  if (!signature || !appSecret) return false;
+
+  const expected =
+    'sha256=' + createHmac('sha256', appSecret).update(rawBody).digest('hex');
+
+  const expectedBuf = Buffer.from(expected);
+  const signatureBuf = Buffer.from(signature);
+  if (expectedBuf.length !== signatureBuf.length) return false;
+  return timingSafeEqual(expectedBuf, signatureBuf);
+}
+
 // ── Slack ────────────────────────────────────────────────────────────────────
 // Slack uses HMAC-SHA256 on "v0:{timestamp}:{body}" with the signing secret.
 // Headers: X-Slack-Signature (v0=<hex>), X-Slack-Request-Timestamp

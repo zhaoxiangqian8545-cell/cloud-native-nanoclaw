@@ -4,6 +4,7 @@
 import * as telegram from './telegram.js';
 import * as discord from './discord.js';
 import * as slack from './slack.js';
+import * as whatsapp from './whatsapp.js';
 import type { ChannelType } from '@clawbot/shared';
 
 export async function sendChannelMessage(
@@ -19,6 +20,8 @@ export async function sendChannelMessage(
       return discord.sendMessage(credentials.botToken, chatId, text);
     case 'slack':
       return slack.sendMessage(credentials.botToken, chatId, text);
+    case 'whatsapp':
+      return whatsapp.sendMessage(credentials.accessToken, credentials.phoneNumberId, chatId, text);
     default:
       throw new Error(`Unsupported channel type: ${channelType}`);
   }
@@ -44,6 +47,13 @@ export async function verifyChannelCredentials(
         teamId: auth.teamId,
         slackBotId: auth.botId,
       };
+    }
+    case 'whatsapp': {
+      const info = await whatsapp.verifyCredentials(
+        credentials.accessToken,
+        credentials.phoneNumberId,
+      );
+      return { phoneNumber: info.phoneNumber };
     }
     default:
       throw new Error(`Unsupported channel type: ${channelType}`);
