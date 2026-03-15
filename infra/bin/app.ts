@@ -16,18 +16,18 @@ const env: cdk.Environment = {
   region: process.env.CDK_DEFAULT_REGION ?? 'us-east-1',
 };
 
-const foundation = new FoundationStack(app, `ClawBot-${stage}-Foundation`, {
+const foundation = new FoundationStack(app, `NanoClawBot-${stage}-Foundation`, {
   env,
   stage,
 });
 
-const auth = new AuthStack(app, `ClawBot-${stage}-Auth`, {
+const auth = new AuthStack(app, `NanoClawBot-${stage}-Auth`, {
   env,
   stage,
 });
 auth.addDependency(foundation);
 
-const agent = new AgentStack(app, `ClawBot-${stage}-Agent`, {
+const agent = new AgentStack(app, `NanoClawBot-${stage}-Agent`, {
   env,
   stage,
   dataBucket: foundation.dataBucket,
@@ -45,7 +45,7 @@ const agent = new AgentStack(app, `ClawBot-${stage}-Agent`, {
 });
 agent.addDependency(foundation);
 
-const controlPlane = new ControlPlaneStack(app, `ClawBot-${stage}-ControlPlane`, {
+const controlPlane = new ControlPlaneStack(app, `NanoClawBot-${stage}-ControlPlane`, {
   env,
   stage,
   vpc: foundation.vpc,
@@ -73,7 +73,7 @@ controlPlane.addDependency(foundation);
 controlPlane.addDependency(auth);
 controlPlane.addDependency(agent);
 
-const frontend = new FrontendStack(app, `ClawBot-${stage}-Frontend`, {
+const frontend = new FrontendStack(app, `NanoClawBot-${stage}-Frontend`, {
   env,
   stage,
   userPool: auth.userPool,
@@ -83,7 +83,7 @@ const frontend = new FrontendStack(app, `ClawBot-${stage}-Frontend`, {
 frontend.addDependency(auth);
 frontend.addDependency(controlPlane);
 
-const monitoring = new MonitoringStack(app, `ClawBot-${stage}-Monitoring`, {
+const monitoring = new MonitoringStack(app, `NanoClawBot-${stage}-Monitoring`, {
   env,
   stage,
   messageQueue: foundation.messageQueue,

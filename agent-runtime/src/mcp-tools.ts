@@ -116,7 +116,7 @@ export async function scheduleTask(
   );
 
   // 2. Create EventBridge Scheduler schedule
-  const scheduleName = `clawbot-${ctx.botId}-${taskId}`;
+  const scheduleName = `nanoclawbot-${ctx.botId}-${taskId}`;
   const scheduleExpression = toEventBridgeExpression(scheduleType, scheduleValue);
 
   await ctx.clients.scheduler.send(
@@ -178,7 +178,7 @@ export async function pauseTask(ctx: McpToolContext, taskId: string): Promise<vo
     }),
   );
 
-  const scheduleName = `clawbot-${ctx.botId}-${taskId}`;
+  const scheduleName = `nanoclawbot-${ctx.botId}-${taskId}`;
   const scheduleExpression = existing
     ? toEventBridgeExpression(existing.scheduleType, existing.scheduleValue)
     : 'rate(1 day)';
@@ -214,7 +214,7 @@ export async function resumeTask(ctx: McpToolContext, taskId: string): Promise<v
     }),
   );
 
-  const scheduleName = `clawbot-${ctx.botId}-${taskId}`;
+  const scheduleName = `nanoclawbot-${ctx.botId}-${taskId}`;
   const scheduleExpression = existing
     ? toEventBridgeExpression(existing.scheduleType, existing.scheduleValue)
     : 'rate(1 day)';
@@ -245,7 +245,7 @@ export async function cancelTask(ctx: McpToolContext, taskId: string): Promise<v
     }),
   );
 
-  const scheduleName = `clawbot-${ctx.botId}-${taskId}`;
+  const scheduleName = `nanoclawbot-${ctx.botId}-${taskId}`;
   try {
     await ctx.clients.scheduler.send(new DeleteScheduleCommand({ Name: scheduleName }));
   } catch {
@@ -298,7 +298,7 @@ export async function updateTask(
   if (updates.scheduleType || updates.scheduleValue) {
     const existing = await getTask(ctx, taskId);
     if (existing) {
-      const scheduleName = `clawbot-${ctx.botId}-${taskId}`;
+      const scheduleName = `nanoclawbot-${ctx.botId}-${taskId}`;
       const scheduleExpression = toEventBridgeExpression(
         existing.scheduleType,
         existing.scheduleValue,

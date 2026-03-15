@@ -25,7 +25,7 @@ export class FrontendStack extends cdk.Stack {
 
     // ── S3 Bucket for SPA ───────────────────────────────────────────────
     this.websiteBucket = new s3.Bucket(this, 'WebsiteBucket', {
-      bucketName: `clawbot-${stage}-frontend`,
+      bucketName: `nanoclawbot-${stage}-frontend-${this.account}-${this.region}`,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       removalPolicy: isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: !isProd,
@@ -43,7 +43,7 @@ export class FrontendStack extends cdk.Stack {
 
     // Origin request policy: forward all headers/query strings to ALB
     const apiOriginRequestPolicy = new cloudfront.OriginRequestPolicy(this, 'ApiOriginRequestPolicy', {
-      originRequestPolicyName: `clawbot-${stage}-api-forward-all`,
+      originRequestPolicyName: `nanoclawbot-${stage}-api-forward-all`,
       headerBehavior: cloudfront.OriginRequestHeaderBehavior.all(),
       queryStringBehavior: cloudfront.OriginRequestQueryStringBehavior.all(),
       cookieBehavior: cloudfront.OriginRequestCookieBehavior.none(),
@@ -100,12 +100,12 @@ export class FrontendStack extends cdk.Stack {
     // ── Outputs ─────────────────────────────────────────────────────────
     new cdk.CfnOutput(this, 'DistributionDomainName', {
       value: this.distribution.distributionDomainName,
-      exportName: `clawbot-${stage}-cdn-domain`,
+      exportName: `nanoclawbot-${stage}-cdn-domain`,
     });
 
     new cdk.CfnOutput(this, 'WebsiteBucketName', {
       value: this.websiteBucket.bucketName,
-      exportName: `clawbot-${stage}-website-bucket`,
+      exportName: `nanoclawbot-${stage}-website-bucket`,
     });
   }
 }

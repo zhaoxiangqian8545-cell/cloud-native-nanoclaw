@@ -119,7 +119,7 @@ export const tasksRoutes: FastifyPluginAsync = async (app) => {
 
     // Create EventBridge Schedule if scheduler is configured
     if (schedulerConfigured()) {
-      const scheduleName = `clawbot-${botId}-${taskId}`;
+      const scheduleName = `nanoclawbot-${botId}-${taskId}`;
       const expression = toScheduleExpression(
         body.scheduleType,
         body.scheduleValue,
@@ -203,7 +203,7 @@ export const tasksRoutes: FastifyPluginAsync = async (app) => {
 
       // Update EventBridge Schedule when status OR schedule changes
       if ((updates.status || updates.scheduleValue) && schedulerConfigured()) {
-        const scheduleName = `clawbot-${botId}-${taskId}`;
+        const scheduleName = `nanoclawbot-${botId}-${taskId}`;
 
         try {
           // Get current schedule to preserve all fields (UpdateSchedule overwrites everything)
@@ -266,7 +266,7 @@ export const tasksRoutes: FastifyPluginAsync = async (app) => {
 
       // Delete EventBridge Schedule if scheduler is configured
       if (schedulerConfigured()) {
-        const scheduleName = `clawbot-${botId}-${taskId}`;
+        const scheduleName = `nanoclawbot-${botId}-${taskId}`;
         try {
           await scheduler.send(
             new DeleteScheduleCommand({ Name: scheduleName }),

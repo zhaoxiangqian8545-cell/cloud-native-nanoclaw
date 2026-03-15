@@ -51,7 +51,7 @@ export class FoundationStack extends cdk.Stack {
 
     // ── S3 Data Bucket ──────────────────────────────────────────────────
     this.dataBucket = new s3.Bucket(this, 'DataBucket', {
-      bucketName: `clawbot-${stage}-data`,
+      bucketName: `nanoclawbot-${stage}-data-${this.account}-${this.region}`,
       versioned: true,
       encryption: s3.BucketEncryption.S3_MANAGED,
       removalPolicy: isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
@@ -70,20 +70,20 @@ export class FoundationStack extends cdk.Stack {
 
     // ── ECR Repository ──────────────────────────────────────────────────
     this.ecrRepo = new ecr.Repository(this, 'AgentRepo', {
-      repositoryName: 'clawbot-agent',
+      repositoryName: 'nanoclawbot-agent',
       removalPolicy: isProd ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
       emptyOnDelete: !isProd,
     });
 
     // ── SQS: Message Queue (FIFO) ──────────────────────────────────────
     this.dlq = new sqs.Queue(this, 'MessagesDlq', {
-      queueName: `clawbot-${stage}-messages-dlq.fifo`,
+      queueName: `nanoclawbot-${stage}-messages-dlq.fifo`,
       fifo: true,
       retentionPeriod: cdk.Duration.days(14),
     });
 
     this.messageQueue = new sqs.Queue(this, 'MessageQueue', {
-      queueName: `clawbot-${stage}-messages.fifo`,
+      queueName: `nanoclawbot-${stage}-messages.fifo`,
       fifo: true,
       fifoThroughputLimit: sqs.FifoThroughputLimit.PER_MESSAGE_GROUP_ID,
       deduplicationScope: sqs.DeduplicationScope.MESSAGE_GROUP,
@@ -97,7 +97,7 @@ export class FoundationStack extends cdk.Stack {
 
     // ── SQS: Reply Queue (Standard) ────────────────────────────────────
     this.replyQueue = new sqs.Queue(this, 'ReplyQueue', {
-      queueName: `clawbot-${stage}-replies`,
+      queueName: `nanoclawbot-${stage}-replies`,
     });
 
     // ── DynamoDB Tables ─────────────────────────────────────────────────
@@ -109,14 +109,14 @@ export class FoundationStack extends cdk.Stack {
     // 1. Users table
     this.usersTable = new dynamodb.Table(this, 'UsersTable', {
       ...tableDefaults,
-      tableName: `clawbot-${stage}-users`,
+      tableName: `nanoclawbot-${stage}-users`,
       partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
     });
 
     // 2. Bots table
     this.botsTable = new dynamodb.Table(this, 'BotsTable', {
       ...tableDefaults,
-      tableName: `clawbot-${stage}-bots`,
+      tableName: `nanoclawbot-${stage}-bots`,
       partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'botId', type: dynamodb.AttributeType.STRING },
     });
@@ -129,7 +129,7 @@ export class FoundationStack extends cdk.Stack {
     // 3. Channels table
     this.channelsTable = new dynamodb.Table(this, 'ChannelsTable', {
       ...tableDefaults,
-      tableName: `clawbot-${stage}-channels`,
+      tableName: `nanoclawbot-${stage}-channels`,
       partitionKey: { name: 'botId', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'channelKey', type: dynamodb.AttributeType.STRING },
     });
@@ -144,7 +144,7 @@ export class FoundationStack extends cdk.Stack {
     // 4. Groups table
     this.groupsTable = new dynamodb.Table(this, 'GroupsTable', {
       ...tableDefaults,
-      tableName: `clawbot-${stage}-groups`,
+      tableName: `nanoclawbot-${stage}-groups`,
       partitionKey: { name: 'botId', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'groupJid', type: dynamodb.AttributeType.STRING },
     });
@@ -152,7 +152,7 @@ export class FoundationStack extends cdk.Stack {
     // 5. Messages table
     this.messagesTable = new dynamodb.Table(this, 'MessagesTable', {
       ...tableDefaults,
-      tableName: `clawbot-${stage}-messages`,
+      tableName: `nanoclawbot-${stage}-messages`,
       partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
       timeToLiveAttribute: 'ttl',
@@ -161,7 +161,7 @@ export class FoundationStack extends cdk.Stack {
     // 6. Tasks table
     this.tasksTable = new dynamodb.Table(this, 'TasksTable', {
       ...tableDefaults,
-      tableName: `clawbot-${stage}-tasks`,
+      tableName: `nanoclawbot-${stage}-tasks`,
       partitionKey: { name: 'botId', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'taskId', type: dynamodb.AttributeType.STRING },
     });
@@ -169,7 +169,7 @@ export class FoundationStack extends cdk.Stack {
     // 7. Sessions table
     this.sessionsTable = new dynamodb.Table(this, 'SessionsTable', {
       ...tableDefaults,
-      tableName: `clawbot-${stage}-sessions`,
+      tableName: `nanoclawbot-${stage}-sessions`,
       partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
       sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
     });

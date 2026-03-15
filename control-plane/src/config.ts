@@ -8,13 +8,13 @@ export const config = {
 
   // DynamoDB table names (match CDK: USERS_TABLE, BOTS_TABLE, etc.)
   tables: {
-    users: process.env.USERS_TABLE || 'clawbot-dev-users',
-    bots: process.env.BOTS_TABLE || 'clawbot-dev-bots',
-    channels: process.env.CHANNELS_TABLE || 'clawbot-dev-channels',
-    groups: process.env.GROUPS_TABLE || 'clawbot-dev-groups',
-    messages: process.env.MESSAGES_TABLE || 'clawbot-dev-messages',
-    tasks: process.env.TASKS_TABLE || 'clawbot-dev-tasks',
-    sessions: process.env.SESSIONS_TABLE || 'clawbot-dev-sessions',
+    users: process.env.USERS_TABLE || 'nanoclawbot-dev-users',
+    bots: process.env.BOTS_TABLE || 'nanoclawbot-dev-bots',
+    channels: process.env.CHANNELS_TABLE || 'nanoclawbot-dev-channels',
+    groups: process.env.GROUPS_TABLE || 'nanoclawbot-dev-groups',
+    messages: process.env.MESSAGES_TABLE || 'nanoclawbot-dev-messages',
+    tasks: process.env.TASKS_TABLE || 'nanoclawbot-dev-tasks',
+    sessions: process.env.SESSIONS_TABLE || 'nanoclawbot-dev-sessions',
   },
 
   // SQS queue URLs (match CDK: MESSAGE_QUEUE_URL, REPLY_QUEUE_URL)
@@ -24,7 +24,7 @@ export const config = {
   },
 
   // S3 (match CDK: DATA_BUCKET)
-  s3Bucket: process.env.DATA_BUCKET || 'clawbot-dev-data',
+  s3Bucket: process.env.DATA_BUCKET || 'nanoclawbot-dev-data',
 
   // Cognito
   cognito: {

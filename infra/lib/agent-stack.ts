@@ -33,13 +33,13 @@ export class AgentStack extends cdk.Stack {
 
     // ── Agent Base Role (created first so scoped role can trust it) ─────
     this.agentBaseRole = new iam.Role(this, 'AgentBaseRole', {
-      roleName: `ClawBotAgentBaseRole-${stage}`,
+      roleName: `NanoClawBotAgentBaseRole-${stage}`,
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
 
     // ── Agent Scoped Role (only assumable by base role, NOT by ecs-tasks) ─
     this.agentScopedRole = new iam.Role(this, 'AgentScopedRole', {
-      roleName: `ClawBotAgentScopedRole-${stage}`,
+      roleName: `NanoClawBotAgentScopedRole-${stage}`,
       assumedBy: new iam.ArnPrincipal(this.agentBaseRole.roleArn),
     });
 
@@ -149,14 +149,14 @@ export class AgentStack extends cdk.Stack {
           'scheduler:GetSchedule',
         ],
         resources: [
-          `arn:aws:scheduler:${this.region}:${this.account}:schedule/default/clawbot-\${aws:PrincipalTag/botId}-*`,
+          `arn:aws:scheduler:${this.region}:${this.account}:schedule/default/nanoclawbot-\${aws:PrincipalTag/botId}-*`,
         ],
       }),
     );
 
     // ── Scheduler Execution Role ────────────────────────────────────────
     this.schedulerRole = new iam.Role(this, 'SchedulerRole', {
-      roleName: `ClawBotSchedulerRole-${stage}`,
+      roleName: `NanoClawBotSchedulerRole-${stage}`,
       assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
     });
 

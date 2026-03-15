@@ -56,7 +56,7 @@ async function buildContext(): Promise<McpToolContext> {
 }
 
 const server = new McpServer({
-  name: 'clawbot',
+  name: 'nanoclawbot',
   version: '1.0.0',
 });
 

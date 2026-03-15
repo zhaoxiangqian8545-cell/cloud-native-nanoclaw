@@ -81,7 +81,7 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
       body.channelType === 'telegram' ? crypto.randomUUID() : undefined;
 
     // 3. Store credentials in Secrets Manager (including webhookSecret for Telegram)
-    const secretName = `clawbot/${config.stage}/${botId}/${body.channelType}`;
+    const secretName = `nanoclawbot/${config.stage}/${botId}/${body.channelType}`;
     const secretResult = await secrets.send(
       new CreateSecretCommand({
         Name: secretName,
@@ -90,7 +90,7 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
           ...verifiedInfo,
           ...(webhookSecret ? { webhookSecret } : {}),
         }),
-        Description: `ClawBot ${body.channelType} credentials for bot ${botId}`,
+        Description: `NanoClawBot ${body.channelType} credentials for bot ${botId}`,
       }),
     );
 
@@ -103,7 +103,7 @@ export const channelsRoutes: FastifyPluginAsync = async (app) => {
 
     // 5. Build webhook URL
     const webhookBase =
-      config.webhookBaseUrl || `https://${config.stage}.clawbot.ai`;
+      config.webhookBaseUrl || `https://${config.stage}.nanoclawbot.ai`;
     const webhookUrl = `${webhookBase}/webhook/${body.channelType}/${botId}`;
 
     // 6. Register webhook with channel provider

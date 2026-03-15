@@ -76,7 +76,7 @@ export class ControlPlaneStack extends cdk.Stack {
 
     // ── ALB ─────────────────────────────────────────────────────────────
     this.alb = new elbv2.ApplicationLoadBalancer(this, 'Alb', {
-      loadBalancerName: `clawbot-${stage}-alb`,
+      loadBalancerName: `nanoclawbot-${stage}-alb`,
       vpc,
       internetFacing: true,
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
@@ -85,13 +85,13 @@ export class ControlPlaneStack extends cdk.Stack {
 
     // ── ECS Cluster ─────────────────────────────────────────────────────
     this.cluster = new ecs.Cluster(this, 'Cluster', {
-      clusterName: `clawbot-${stage}`,
+      clusterName: `nanoclawbot-${stage}`,
       vpc,
     });
 
     // ── Log Group ───────────────────────────────────────────────────────
     const logGroup = new logs.LogGroup(this, 'ControlPlaneLogGroup', {
-      logGroupName: `/clawbot/${stage}/control-plane`,
+      logGroupName: `/nanoclawbot/${stage}/control-plane`,
       retention: logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
@@ -110,7 +110,7 @@ export class ControlPlaneStack extends cdk.Stack {
     const controlPlaneRepo = ecr.Repository.fromRepositoryName(
       this,
       'ControlPlaneRepo',
-      'clawbot-control-plane',
+      'nanoclawbot-control-plane',
     );
 
     taskDef.addContainer('ControlPlane', {
@@ -171,7 +171,7 @@ export class ControlPlaneStack extends cdk.Stack {
           'secretsmanager:DeleteSecret',
           'secretsmanager:UpdateSecret',
         ],
-        resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:clawbot/${stage}/*`],
+        resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:nanoclawbot/${stage}/*`],
       }),
     );
 
@@ -183,7 +183,7 @@ export class ControlPlaneStack extends cdk.Stack {
         actions: ['ecs:RunTask', 'ecs:DescribeTasks', 'ecs:StopTask'],
         resources: [
           `arn:aws:ecs:${this.region}:${this.account}:task/${this.cluster.clusterName}/*`,
-          `arn:aws:ecs:${this.region}:${this.account}:task-definition/clawbot-${stage}-*`,
+          `arn:aws:ecs:${this.region}:${this.account}:task-definition/nanoclawbot-${stage}-*`,
         ],
       }),
     );
@@ -269,12 +269,12 @@ export class ControlPlaneStack extends cdk.Stack {
 
     // ── WAF WebACL ──────────────────────────────────────────────────────
     const webAcl = new wafv2.CfnWebACL(this, 'WebAcl', {
-      name: `clawbot-${stage}-waf`,
+      name: `nanoclawbot-${stage}-waf`,
       scope: 'REGIONAL',
       defaultAction: { allow: {} },
       visibilityConfig: {
         cloudWatchMetricsEnabled: true,
-        metricName: `clawbot-${stage}-waf`,
+        metricName: `nanoclawbot-${stage}-waf`,
         sampledRequestsEnabled: true,
       },
       rules: [
@@ -284,7 +284,7 @@ export class ControlPlaneStack extends cdk.Stack {
           action: { block: {} },
           visibilityConfig: {
             cloudWatchMetricsEnabled: true,
-            metricName: `clawbot-${stage}-rate-limit`,
+            metricName: `nanoclawbot-${stage}-rate-limit`,
             sampledRequestsEnabled: true,
           },
           statement: {
@@ -305,7 +305,7 @@ export class ControlPlaneStack extends cdk.Stack {
     // ── Outputs ─────────────────────────────────────────────────────────
     new cdk.CfnOutput(this, 'AlbDnsName', {
       value: this.alb.loadBalancerDnsName,
-      exportName: `clawbot-${stage}-alb-dns`,
+      exportName: `nanoclawbot-${stage}-alb-dns`,
     });
   }
 }

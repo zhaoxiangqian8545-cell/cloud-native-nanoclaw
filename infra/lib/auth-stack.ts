@@ -18,7 +18,7 @@ export class AuthStack extends cdk.Stack {
 
     // ── Cognito User Pool ───────────────────────────────────────────────
     this.userPool = new cognito.UserPool(this, 'UserPool', {
-      userPoolName: `clawbot-${stage}-users`,
+      userPoolName: `nanoclawbot-${stage}-users`,
       selfSignUpEnabled: true,
       signInAliases: {
         email: true,
@@ -39,7 +39,7 @@ export class AuthStack extends cdk.Stack {
 
     // ── User Pool Client ────────────────────────────────────────────────
     this.userPoolClient = new cognito.UserPoolClient(this, 'WebClient', {
-      userPoolClientName: `clawbot-${stage}-web`,
+      userPoolClientName: `nanoclawbot-${stage}-web`,
       userPool: this.userPool,
       authFlows: {
         userPassword: true,
@@ -57,12 +57,12 @@ export class AuthStack extends cdk.Stack {
     // ── Outputs ─────────────────────────────────────────────────────────
     new cdk.CfnOutput(this, 'UserPoolId', {
       value: this.userPool.userPoolId,
-      exportName: `clawbot-${stage}-user-pool-id`,
+      exportName: `nanoclawbot-${stage}-user-pool-id`,
     });
 
     new cdk.CfnOutput(this, 'UserPoolClientId', {
       value: this.userPoolClient.userPoolClientId,
-      exportName: `clawbot-${stage}-user-pool-client-id`,
+      exportName: `nanoclawbot-${stage}-user-pool-client-id`,
     });
   }
 }

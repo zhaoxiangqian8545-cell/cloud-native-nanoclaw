@@ -222,7 +222,7 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
           'ToolSearch',
           'Skill',
           'NotebookEdit',
-          'mcp__clawbot__*',
+          'mcp__nanoclawbot__*',
         ],
         env: sdkEnv,
         permissionMode: 'bypassPermissions',
@@ -230,7 +230,7 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
         settingSources: ['project', 'user'],
         maxTurns: payload.maxTurns,
         mcpServers: {
-          clawbot: {
+          nanoclawbot: {
             command: 'node',
             args: [mcpServerPath],
             env: {

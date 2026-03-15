@@ -34,14 +34,14 @@ export class MonitoringStack extends cdk.Stack {
 
     // ── SNS Topic ───────────────────────────────────────────────────────
     this.alertsTopic = new sns.Topic(this, 'AlertsTopic', {
-      topicName: `clawbot-${stage}-alerts`,
+      topicName: `nanoclawbot-${stage}-alerts`,
     });
 
     const snsAction = new cw_actions.SnsAction(this.alertsTopic);
 
     // ── CloudWatch Dashboard ────────────────────────────────────────────
     const dashboard = new cloudwatch.Dashboard(this, 'Dashboard', {
-      dashboardName: `clawbot-${stage}`,
+      dashboardName: `nanoclawbot-${stage}`,
     });
 
     // SQS Metrics
@@ -143,7 +143,7 @@ export class MonitoringStack extends cdk.Stack {
 
     // DLQ messages > 0 for 1 minute
     const dlqAlarm = new cloudwatch.Alarm(this, 'DlqAlarm', {
-      alarmName: `clawbot-${stage}-dlq-messages`,
+      alarmName: `nanoclawbot-${stage}-dlq-messages`,
       alarmDescription: 'Dead-letter queue has messages — investigate failed processing',
       metric: dlqVisibleMetric,
       threshold: 0,
@@ -155,7 +155,7 @@ export class MonitoringStack extends cdk.Stack {
 
     // ECS CPU > 80% for 5 minutes
     const cpuAlarm = new cloudwatch.Alarm(this, 'CpuAlarm', {
-      alarmName: `clawbot-${stage}-ecs-cpu-high`,
+      alarmName: `nanoclawbot-${stage}-ecs-cpu-high`,
       alarmDescription: 'ECS service CPU utilization above 80%',
       metric: ecsCpuMetric,
       threshold: 80,
@@ -167,7 +167,7 @@ export class MonitoringStack extends cdk.Stack {
 
     // SQS visible messages > 100 for 5 minutes
     const queueDepthAlarm = new cloudwatch.Alarm(this, 'QueueDepthAlarm', {
-      alarmName: `clawbot-${stage}-queue-depth-high`,
+      alarmName: `nanoclawbot-${stage}-queue-depth-high`,
       alarmDescription: 'Message queue depth above 100 — possible processing slowdown',
       metric: messageQueueVisibleMetric,
       threshold: 100,

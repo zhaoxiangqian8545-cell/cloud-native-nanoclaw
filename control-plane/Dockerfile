@@ -43,8 +43,8 @@ COPY --from=builder /app/shared/package.json ./node_modules/@clawbot/shared/
 COPY --from=builder /app/control-plane/package.json ./
 
 # Non-root user for security
-RUN groupadd -r clawbot && useradd -r -g clawbot clawbot
-USER clawbot
+RUN groupadd -r nanoclawbot && useradd -r -g nanoclawbot nanoclawbot
+USER nanoclawbot
 
 EXPOSE 3000
 
