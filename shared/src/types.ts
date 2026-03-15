@@ -62,6 +62,7 @@ export interface ChannelConfig {
   status: 'connected' | 'disconnected' | 'error' | 'pending_webhook';
   healthStatus: 'healthy' | 'unhealthy' | 'unknown';
   consecutiveFailures: number;
+  lastHealthCheck?: string; // ISO timestamp of last health check
   config?: Record<string, unknown>;
   createdAt: string;
 }
@@ -147,6 +148,7 @@ export interface SqsInboundPayload {
   messageId: string;
   channelType: ChannelType;
   timestamp: string;
+  attachments?: Attachment[];
 }
 
 export interface SqsTaskPayload {

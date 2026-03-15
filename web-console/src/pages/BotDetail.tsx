@@ -108,14 +108,19 @@ export default function BotDetail() {
         ) : (
           <div className="space-y-2">
             {groupsList.map((g) => (
-              <Link key={g.groupJid} to={`/bots/${botId}/messages/${encodeURIComponent(g.groupJid)}`}
-                className="flex justify-between items-center p-3 bg-gray-50 rounded hover:bg-gray-100">
-                <div>
-                  <span className="font-medium">{g.name || g.groupJid}</span>
-                  <span className="ml-2 text-xs text-gray-400 capitalize">{g.channelType}</span>
+              <div key={g.groupJid} className="flex justify-between items-center p-3 bg-gray-50 rounded hover:bg-gray-100">
+                <Link to={`/bots/${botId}/messages/${encodeURIComponent(g.groupJid)}`} className="flex-1">
+                  <div>
+                    <span className="font-medium">{g.name || g.groupJid}</span>
+                    <span className="ml-2 text-xs text-gray-400 capitalize">{g.channelType}</span>
+                  </div>
+                </Link>
+                <div className="flex items-center gap-3">
+                  <Link to={`/bots/${botId}/groups/${encodeURIComponent(g.groupJid)}/memory`}
+                    className="text-xs text-indigo-600 hover:text-indigo-500">Memory</Link>
+                  <span className="text-xs text-gray-400">{g.lastMessageAt ? new Date(g.lastMessageAt).toLocaleDateString() : ''}</span>
                 </div>
-                <span className="text-xs text-gray-400">{g.lastMessageAt ? new Date(g.lastMessageAt).toLocaleDateString() : ''}</span>
-              </Link>
+              </div>
             ))}
           </div>
         )}
@@ -127,6 +132,11 @@ export default function BotDetail() {
           className="flex-1 p-4 bg-white rounded-lg shadow text-center hover:shadow-md transition-shadow">
           <h3 className="font-semibold text-gray-900">Scheduled Tasks</h3>
           <p className="text-sm text-gray-500 mt-1">Manage cron jobs and one-time tasks</p>
+        </Link>
+        <Link to={`/bots/${botId}/memory`}
+          className="flex-1 p-4 bg-white rounded-lg shadow text-center hover:shadow-md transition-shadow">
+          <h3 className="font-semibold text-gray-900">Bot Memory</h3>
+          <p className="text-sm text-gray-500 mt-1">Edit bot-level CLAUDE.md memory</p>
         </Link>
       </div>
     </div>

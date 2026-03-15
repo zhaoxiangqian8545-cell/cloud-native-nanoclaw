@@ -122,6 +122,11 @@ export const tasks = {
   delete: (botId: string, taskId: string) => request<void>(`/bots/${botId}/tasks/${taskId}`, { method: 'DELETE' }),
 };
 
+// User API
+export const user = {
+  me: () => request<{ userId: string; email: string; plan?: string; quota?: any; usage?: { month: string; tokens: number; invocations: number } }>('/me'),
+};
+
 // Memory API (CLAUDE.md files)
 export interface MemoryResponse {
   content: string;

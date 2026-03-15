@@ -6,6 +6,7 @@ import BotDetail from './pages/BotDetail';
 import ChannelSetup from './pages/ChannelSetup';
 import Messages from './pages/Messages';
 import Tasks from './pages/Tasks';
+import MemoryEditor from './pages/MemoryEditor';
 import Layout from './components/Layout';
 
 export default function App() {
@@ -27,6 +28,9 @@ export default function App() {
         <Route path="/bots/:botId/channels/new" element={<ChannelSetup />} />
         <Route path="/bots/:botId/messages/:groupJid" element={<Messages />} />
         <Route path="/bots/:botId/tasks" element={<Tasks />} />
+        <Route path="/memory" element={<MemoryEditor />} />
+        <Route path="/bots/:botId/memory" element={<MemoryEditor />} />
+        <Route path="/bots/:botId/groups/:groupJid/memory" element={<MemoryEditor />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Layout>

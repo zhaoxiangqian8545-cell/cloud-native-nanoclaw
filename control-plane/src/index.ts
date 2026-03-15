@@ -10,6 +10,7 @@ import { apiRoutes } from './routes/api/index.js';
 import { webhookRoutes } from './webhooks/index.js';
 import { startSqsConsumer, stopSqsConsumer } from './sqs/consumer.js';
 import { startReplyConsumer, stopReplyConsumer } from './sqs/reply-consumer.js';
+import { startHealthCheckLoop, stopHealthCheckLoop } from './services/health-checker.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
@@ -25,11 +26,15 @@ async function main() {
   startSqsConsumer(logger);
   startReplyConsumer(logger);
 
+  // Start periodic channel health checks
+  startHealthCheckLoop(logger);
+
   // Graceful shutdown
   const shutdown = async () => {
     logger.info('Shutting down...');
     stopSqsConsumer();
     stopReplyConsumer();
+    stopHealthCheckLoop();
     await app.close();
     process.exit(0);
   };

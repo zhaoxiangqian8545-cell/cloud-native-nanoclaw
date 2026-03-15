@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { bots as botsApi, Bot } from '../lib/api';
+import { bots as botsApi, user as userApi, Bot } from '../lib/api';
 
 export default function Dashboard() {
   const [bots, setBots] = useState<Bot[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [newBotName, setNewBotName] = useState('');
+  const [usage, setUsage] = useState<{ month: string; tokens: number; invocations: number } | null>(null);
+  const [quota, setQuota] = useState<any>(null);
 
-  useEffect(() => { loadBots(); }, []);
+  useEffect(() => { loadBots(); loadUsage(); }, []);
 
   async function loadBots() {
     try {
@@ -18,6 +20,16 @@ export default function Dashboard() {
       console.error('Failed to load bots:', err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadUsage() {
+    try {
+      const me = await userApi.me();
+      if (me.usage) setUsage(me.usage);
+      if (me.quota) setQuota(me.quota);
+    } catch (err) {
+      console.error('Failed to load usage:', err);
     }
   }
 
@@ -37,6 +49,24 @@ export default function Dashboard() {
 
   return (
     <div>
+      {usage && (
+        <div className="mb-6 p-4 bg-white rounded-lg shadow flex items-center justify-between">
+          <div className="flex items-center gap-6 text-sm text-gray-700">
+            <span>
+              Token Usage: <span className="font-semibold">{usage.tokens.toLocaleString()}</span>
+              {quota?.maxTokens != null && <span className="text-gray-400"> / {Number(quota.maxTokens).toLocaleString()}</span>}
+            </span>
+            <span className="text-gray-300">|</span>
+            <span>
+              Invocations: <span className="font-semibold">{usage.invocations.toLocaleString()}</span>
+            </span>
+            <span className="text-gray-300">|</span>
+            <span className="text-gray-400">{usage.month}</span>
+          </div>
+          <Link to="/memory" className="text-sm text-indigo-600 hover:text-indigo-500">Shared Memory</Link>
+        </div>
+      )}
+
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">My Bots</h1>
         <button onClick={() => setShowCreate(true)}

@@ -7,4 +7,5 @@ cdk.out/
 *.js.map
 !jest.config.js
 !vite.config.ts
+!vite-env.d.ts
 .worktrees/
