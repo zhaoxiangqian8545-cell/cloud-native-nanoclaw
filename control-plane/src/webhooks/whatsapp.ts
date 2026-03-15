@@ -4,7 +4,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { config } from '../config.js';
-import { getChannelsByBot, putMessage, getOrCreateGroup, listGroups, getUser } from '../services/dynamo.js';
+import { getChannelsByBot, putMessage, getOrCreateGroup, listGroups, getUser, updateChannelHealth } from '../services/dynamo.js';
 import { getCachedBot, getChannelCredentials } from '../services/cached-lookups.js';
 import { verifyWhatsAppSignature } from './signature.js';
 import type { Message, SqsInboundPayload } from '@clawbot/shared';
@@ -96,7 +96,10 @@ export const whatsappWebhook: FastifyPluginAsync = async (app) => {
           return reply.status(403).send('Forbidden');
         }
 
-        request.log.info({ botId }, 'WhatsApp webhook verification challenge accepted');
+        // Update channel status from pending_webhook to connected
+        const channelKey = `${whatsappChannel.channelType}#${whatsappChannel.channelId}`;
+        await updateChannelHealth(botId, channelKey, 'healthy', 0, 'connected');
+        request.log.info({ botId }, 'WhatsApp channel verified and status updated to connected');
         return reply.status(200).send(query['hub.challenge'] || '');
       }
       return reply.status(403).send('Forbidden');

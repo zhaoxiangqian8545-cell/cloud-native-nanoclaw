@@ -347,20 +347,27 @@ export async function deleteChannel(
 export async function updateChannelHealth(
   botId: string,
   channelKey: string,
-  status: string,
+  healthStatus: string,
   failures: number,
+  channelStatus?: string,
 ): Promise<void> {
+  const updateExpr = channelStatus
+    ? 'SET healthStatus = :hs, consecutiveFailures = :failures, lastHealthCheck = :now, #s = :cs'
+    : 'SET healthStatus = :hs, consecutiveFailures = :failures, lastHealthCheck = :now';
+  const values: Record<string, unknown> = {
+    ':hs': healthStatus,
+    ':failures': failures,
+    ':now': new Date().toISOString(),
+  };
+  if (channelStatus) values[':cs'] = channelStatus;
+
   await client.send(
     new UpdateCommand({
       TableName: config.tables.channels,
       Key: { botId, channelKey },
-      UpdateExpression:
-        'SET healthStatus = :status, consecutiveFailures = :failures, lastHealthCheck = :now',
-      ExpressionAttributeValues: {
-        ':status': status,
-        ':failures': failures,
-        ':now': new Date().toISOString(),
-      },
+      UpdateExpression: updateExpr,
+      ExpressionAttributeValues: values,
+      ...(channelStatus ? { ExpressionAttributeNames: { '#s': 'status' } } : {}),
     }),
   );
 }

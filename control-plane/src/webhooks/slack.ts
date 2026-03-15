@@ -4,7 +4,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { config } from '../config.js';
-import { getChannelsByBot, putMessage, getOrCreateGroup, listGroups, getUser } from '../services/dynamo.js';
+import { getChannelsByBot, putMessage, getOrCreateGroup, listGroups, getUser, updateChannelHealth } from '../services/dynamo.js';
 import { getCachedBot, getChannelCredentials } from '../services/cached-lookups.js';
 import { verifySlackSignature } from './signature.js';
 import type { Attachment, Message, SqsInboundPayload } from '@clawbot/shared';
@@ -109,6 +109,16 @@ export const slackWebhook: FastifyPluginAsync = async (app) => {
         if (body.type === 'url_verification') {
           const verification = body as SlackUrlVerification;
           logger.info({ botId }, 'Slack URL verification challenge received');
+
+          // Update channel status from pending_webhook to connected
+          const channels = await getChannelsByBot(botId);
+          const slackChannel = channels.find(c => c.channelType === 'slack');
+          if (slackChannel) {
+            const channelKey = `${slackChannel.channelType}#${slackChannel.channelId}`;
+            await updateChannelHealth(botId, channelKey, 'healthy', 0, 'connected');
+            logger.info({ botId }, 'Slack channel status updated to connected (webhook verified)');
+          }
+
           return reply.status(200).send({
             challenge: verification.challenge,
           });

@@ -4,7 +4,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import { config } from '../config.js';
-import { getChannelsByBot, putMessage, getOrCreateGroup, listGroups, getUser } from '../services/dynamo.js';
+import { getChannelsByBot, putMessage, getOrCreateGroup, listGroups, getUser, updateChannelHealth } from '../services/dynamo.js';
 import { getCachedBot, getChannelCredentials } from '../services/cached-lookups.js';
 import { verifyDiscordSignature } from './signature.js';
 import type { Attachment, Message, SqsInboundPayload } from '@clawbot/shared';
@@ -110,6 +110,16 @@ export const discordWebhook: FastifyPluginAsync = async (app) => {
         // 1. Handle PING interaction (Discord verification handshake)
         if (body.type === INTERACTION_PING) {
           logger.info({ botId }, 'Discord PING received, responding with PONG');
+
+          // Update channel status from pending_webhook to connected
+          const channels = await getChannelsByBot(botId);
+          const discordChannel = channels.find(c => c.channelType === 'discord');
+          if (discordChannel) {
+            const channelKey = `${discordChannel.channelType}#${discordChannel.channelId}`;
+            await updateChannelHealth(botId, channelKey, 'healthy', 0, 'connected');
+            logger.info({ botId }, 'Discord channel status updated to connected (PING verified)');
+          }
+
           return reply.status(200).send({ type: 1 }); // PONG
         }
 
