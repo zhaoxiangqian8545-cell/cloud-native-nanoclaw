@@ -201,29 +201,45 @@ export const tasksRoutes: FastifyPluginAsync = async (app) => {
         request.body as UpdateTaskRequest,
       );
 
-      // Update EventBridge Schedule state when status changes
-      if (updates.status && schedulerConfigured()) {
+      // Update EventBridge Schedule when status OR schedule changes
+      if ((updates.status || updates.scheduleValue) && schedulerConfigured()) {
         const scheduleName = `clawbot-${botId}-${taskId}`;
 
-        // Get current schedule to preserve all fields (UpdateSchedule overwrites everything)
-        const current = await scheduler.send(
-          new GetScheduleCommand({ Name: scheduleName }),
-        );
+        try {
+          // Get current schedule to preserve all fields (UpdateSchedule overwrites everything)
+          const current = await scheduler.send(
+            new GetScheduleCommand({ Name: scheduleName }),
+          );
 
-        await scheduler.send(
-          new UpdateScheduleCommand({
-            Name: scheduleName,
-            ScheduleExpression: current.ScheduleExpression!,
-            ScheduleExpressionTimezone:
-              current.ScheduleExpressionTimezone || 'UTC',
-            FlexibleTimeWindow: current.FlexibleTimeWindow || {
-              Mode: 'OFF',
-            },
-            Target: current.Target!,
-            State: updates.status === 'paused' ? 'DISABLED' : 'ENABLED',
-            ActionAfterCompletion: current.ActionAfterCompletion,
-          }),
-        );
+          // Compute new expression if schedule changed
+          const newExpression = updates.scheduleValue
+            ? toScheduleExpression(existing.scheduleType, updates.scheduleValue)
+            : current.ScheduleExpression!;
+
+          await scheduler.send(
+            new UpdateScheduleCommand({
+              Name: scheduleName,
+              ScheduleExpression: newExpression,
+              ScheduleExpressionTimezone:
+                current.ScheduleExpressionTimezone || 'UTC',
+              FlexibleTimeWindow: current.FlexibleTimeWindow || {
+                Mode: 'OFF',
+              },
+              Target: current.Target!,
+              State: updates.status === 'paused' ? 'DISABLED' : (updates.status === 'active' ? 'ENABLED' : current.State),
+              ActionAfterCompletion: current.ActionAfterCompletion,
+            }),
+          );
+        } catch (err: unknown) {
+          if (
+            err instanceof Error &&
+            err.name === 'ResourceNotFoundException'
+          ) {
+            request.log.warn({ scheduleName }, 'EventBridge schedule not found — skipping update');
+          } else {
+            throw err;
+          }
+        }
       }
 
       await updateTask(botId, taskId, updates);

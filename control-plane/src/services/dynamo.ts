@@ -141,15 +141,27 @@ export async function checkAndAcquireAgentSlot(
 
 export async function releaseAgentSlot(userId: string): Promise<void> {
   userIdSchema.parse(userId);
-  await client.send(
-    new UpdateCommand({
-      TableName: config.tables.users,
-      Key: { userId },
-      UpdateExpression:
-        'SET activeAgents = if_not_exists(activeAgents, :one) - :one',
-      ExpressionAttributeValues: { ':one': 1 },
-    }),
-  );
+  try {
+    await client.send(
+      new UpdateCommand({
+        TableName: config.tables.users,
+        Key: { userId },
+        UpdateExpression: 'SET activeAgents = activeAgents - :one',
+        ConditionExpression: 'activeAgents > :zero',
+        ExpressionAttributeValues: { ':one': 1, ':zero': 0 },
+      }),
+    );
+  } catch (err: unknown) {
+    if (
+      err instanceof Error &&
+      err.name === 'ConditionalCheckFailedException'
+    ) {
+      // Already at zero — log warning but don't throw
+      console.warn(`releaseAgentSlot: activeAgents already at 0 for user ${userId}`);
+      return;
+    }
+    throw err;
+  }
 }
 
 // ── Bot operations ──────────────────────────────────────────────────────────
