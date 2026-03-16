@@ -122,7 +122,7 @@ export const groups = {
 export const tasks = {
   list: (botId: string) => request<ScheduledTask[]>(`/bots/${botId}/tasks`),
   create: (botId: string, data: CreateTaskRequest) => request<ScheduledTask>(`/bots/${botId}/tasks`, { method: 'POST', body: JSON.stringify(data) }),
-  update: (botId: string, taskId: string, data: UpdateTaskRequest) => request<ScheduledTask>(`/bots/${botId}/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  update: (botId: string, taskId: string, data: UpdateTaskRequest) => request<ScheduledTask>(`/bots/${botId}/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify(data) }),
   delete: (botId: string, taskId: string) => request<void>(`/bots/${botId}/tasks/${taskId}`, { method: 'DELETE' }),
 };
 
@@ -147,7 +147,7 @@ export interface AdminUser {
   usageMonth: string;
   usageTokens: number;
   usageInvocations: number;
-  activeAgents: number;
+  botCount: number;
   createdAt: string;
   lastLogin: string;
 }

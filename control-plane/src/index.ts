@@ -11,6 +11,7 @@ import { webhookRoutes } from './webhooks/index.js';
 import { startSqsConsumer, stopSqsConsumer } from './sqs/consumer.js';
 import { startReplyConsumer, stopReplyConsumer } from './sqs/reply-consumer.js';
 import { startHealthCheckLoop, stopHealthCheckLoop } from './services/health-checker.js';
+import { startDiscordGateway, stopDiscordGateway } from './discord/gateway-manager.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
@@ -31,12 +32,18 @@ async function main() {
   // Start periodic channel health checks
   startHealthCheckLoop(logger);
 
+  // Start Discord Gateway (with leader election)
+  startDiscordGateway(logger).catch((err) => {
+    logger.error(err, 'Failed to start Discord Gateway');
+  });
+
   // Graceful shutdown
   const shutdown = async () => {
     logger.info('Shutting down...');
     stopSqsConsumer();
     stopReplyConsumer();
     stopHealthCheckLoop();
+    await stopDiscordGateway();
     await app.close();
     process.exit(0);
   };
