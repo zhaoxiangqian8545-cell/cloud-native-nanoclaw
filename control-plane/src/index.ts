@@ -11,7 +11,10 @@ import { webhookRoutes } from './webhooks/index.js';
 import { startSqsConsumer, stopSqsConsumer } from './sqs/consumer.js';
 import { startReplyConsumer, stopReplyConsumer } from './sqs/reply-consumer.js';
 import { startHealthCheckLoop, stopHealthCheckLoop } from './services/health-checker.js';
-import { startDiscordGateway, stopDiscordGateway } from './discord/gateway-manager.js';
+import { initRegistry } from './adapters/registry.js';
+import { DiscordAdapter } from './adapters/discord/index.js';
+import { SlackAdapter } from './adapters/slack/index.js';
+import { TelegramAdapter } from './adapters/telegram/index.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
 
@@ -32,9 +35,13 @@ async function main() {
   // Start periodic channel health checks
   startHealthCheckLoop(logger);
 
-  // Start Discord Gateway (with leader election)
-  startDiscordGateway(logger).catch((err) => {
-    logger.error(err, 'Failed to start Discord Gateway');
+  // Start channel adapters (Discord Gateway, etc.)
+  const registry = initRegistry(logger);
+  registry.register(new DiscordAdapter(logger));
+  registry.register(new SlackAdapter(logger));
+  registry.register(new TelegramAdapter(logger));
+  registry.startAll().catch((err) => {
+    logger.error(err, 'Failed to start channel adapters');
   });
 
   // Graceful shutdown
@@ -43,7 +50,7 @@ async function main() {
     stopSqsConsumer();
     stopReplyConsumer();
     stopHealthCheckLoop();
-    await stopDiscordGateway();
+    await registry.stopAll();
     await app.close();
     process.exit(0);
   };

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { channels as channelsApi } from '../lib/api';
 
 type ChannelType = 'telegram' | 'discord' | 'slack';
@@ -266,8 +266,17 @@ function DiscordGuide({ botId, step }: { botId: string; step: 'before' | 'after'
                 Left menu → <strong>OAuth2</strong> → <strong>URL Generator</strong>:
               </p>
               <ul className="mt-1 ml-4 list-disc text-blue-700 space-y-0.5">
-                <li>Scopes: select <code className="bg-blue-100 px-1 rounded">bot</code></li>
-                <li>Bot Permissions: select <code className="bg-blue-100 px-1 rounded">Send Messages</code>, <code className="bg-blue-100 px-1 rounded">Read Message History</code>, <code className="bg-blue-100 px-1 rounded">View Channels</code></li>
+                <li>Scopes: select <code className="bg-blue-100 px-1 rounded">bot</code> and <code className="bg-blue-100 px-1 rounded">applications.commands</code></li>
+                <li>Bot Permissions: select:
+                  <ul className="mt-0.5 ml-4 list-[circle] text-blue-700 space-y-0.5">
+                    <li><code className="bg-blue-100 px-1 rounded">Send Messages</code></li>
+                    <li><code className="bg-blue-100 px-1 rounded">Send Messages in Threads</code></li>
+                    <li><code className="bg-blue-100 px-1 rounded">Embed Links</code> — for rich reply formatting</li>
+                    <li><code className="bg-blue-100 px-1 rounded">Read Message History</code></li>
+                    <li><code className="bg-blue-100 px-1 rounded">View Channels</code></li>
+                    <li><code className="bg-blue-100 px-1 rounded">Use Slash Commands</code></li>
+                  </ul>
+                </li>
               </ul>
               <p className="text-blue-700 mt-1">
                 Copy the generated URL → open in browser → select your server → <strong>Authorize</strong>.
@@ -277,7 +286,7 @@ function DiscordGuide({ botId, step }: { botId: string; step: 'before' | 'after'
         </div>
 
         <div className="border-t border-blue-200 pt-3 mt-3">
-          <p className="text-blue-800 font-medium">Fill in both fields below, then click Connect. After connecting, you'll get instructions for the final step.</p>
+          <p className="text-blue-800 font-medium">Fill in both fields below, then click Connect.</p>
         </div>
       </div>
     );
@@ -293,7 +302,7 @@ function DiscordGuide({ botId, step }: { botId: string; step: 'before' | 'after'
         <h3 className="font-semibold text-green-900 text-base">Discord Channel Connected!</h3>
       </div>
 
-      <p className="text-green-800">Credentials verified and stored. Complete the final step:</p>
+      <p className="text-green-800">Credentials verified and stored. Complete the remaining steps:</p>
 
       <div className="space-y-3">
         <div className="flex gap-3">
@@ -323,11 +332,32 @@ function DiscordGuide({ botId, step }: { botId: string; step: 'before' | 'after'
         <div className="flex gap-3">
           <span className="flex-shrink-0 w-6 h-6 rounded-full bg-green-600 text-white text-xs flex items-center justify-center font-bold">7</span>
           <div>
+            <p className="font-medium text-green-900">Private Channel Access (Optional)</p>
+            <p className="text-green-700 mt-0.5">
+              To use the bot in <strong>private channels</strong>, you must add it explicitly:
+            </p>
+            <ul className="mt-1 ml-4 list-disc text-green-700 space-y-0.5">
+              <li>Open the private channel → click the channel name (gear icon) → <strong>Permissions</strong></li>
+              <li>Click <strong>+</strong> to add members/roles → search for your bot name</li>
+              <li>Ensure <strong>View Channel</strong>, <strong>Send Messages</strong>, and <strong>Read Message History</strong> are enabled</li>
+            </ul>
+            <p className="text-green-600 mt-1 text-xs">Public channels work automatically — the bot can see any channel it has access to.</p>
+          </div>
+        </div>
+
+        <div className="flex gap-3">
+          <span className="flex-shrink-0 w-6 h-6 rounded-full bg-green-600 text-white text-xs flex items-center justify-center font-bold">8</span>
+          <div>
             <p className="font-medium text-green-900">Test in Discord</p>
             <p className="text-green-700 mt-0.5">
-              In your Discord server, @mention the bot in any channel: <code className="bg-green-100 px-1 rounded">@YourBotName hello</code>
+              The bot supports multiple interaction methods:
             </p>
-            <p className="text-green-600 mt-1 text-xs">The bot should respond within a few seconds.</p>
+            <ul className="mt-1 ml-4 list-disc text-green-700 space-y-0.5">
+              <li><strong>@mention</strong> — type <code className="bg-green-100 px-1 rounded">@YourBotName hello</code> in any channel</li>
+              <li><strong>Slash commands</strong> — type <code className="bg-green-100 px-1 rounded">/ask</code> to send a private question, <code className="bg-green-100 px-1 rounded">/status</code> for bot info, <code className="bg-green-100 px-1 rounded">/help</code> for usage guide</li>
+              <li><strong>Direct messages</strong> — DM the bot directly for private conversations</li>
+            </ul>
+            <p className="text-green-600 mt-1 text-xs">Replies use rich embeds with response time. Slash command replies are private by default.</p>
           </div>
         </div>
       </div>
@@ -338,11 +368,13 @@ function DiscordGuide({ botId, step }: { botId: string; step: 'before' | 'after'
 export default function ChannelSetup() {
   const { botId } = useParams<{ botId: string }>();
   const navigate = useNavigate();
-  const [channelType, setChannelType] = useState<ChannelType | ''>('');
+  const [searchParams] = useSearchParams();
+  const resumeType = searchParams.get('resume') as ChannelType | null;
+  const [channelType, setChannelType] = useState<ChannelType | ''>(resumeType || '');
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState(!!resumeType);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
