@@ -344,6 +344,7 @@ export async function updateBot(
     'description',
     'systemPrompt',
     'triggerPattern',
+    'model',
     'status',
     'containerConfig',
   ] as const;

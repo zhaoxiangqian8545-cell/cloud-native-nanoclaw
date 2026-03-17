@@ -19,6 +19,7 @@ const createBotSchema = z.object({
   description: z.string().max(500).optional(),
   systemPrompt: z.string().max(10000).optional(),
   triggerPattern: z.string().max(200).optional(),
+  model: z.string().max(200).optional(),
 });
 
 const updateBotSchema = z.object({
@@ -26,6 +27,7 @@ const updateBotSchema = z.object({
   description: z.string().max(500).optional(),
   systemPrompt: z.string().max(10000).optional(),
   triggerPattern: z.string().max(200).optional(),
+  model: z.string().max(200).optional(),
   status: z.enum(['active', 'paused', 'deleted']).optional(),
 });
 
@@ -66,6 +68,7 @@ export const botsRoutes: FastifyPluginAsync = async (app) => {
       description: body.description,
       systemPrompt: body.systemPrompt,
       triggerPattern: body.triggerPattern || `@${body.name}`,
+      model: body.model,
       status: 'created',
       createdAt: now,
       updatedAt: now,

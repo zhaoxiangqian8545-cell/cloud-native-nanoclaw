@@ -31,6 +31,7 @@ import { getScopedClients } from './scoped-credentials.js';
 import { setBusy, setIdle } from './server.js';
 
 const SESSION_BUCKET = process.env.SESSION_BUCKET || '';
+const DEFAULT_MODEL = 'global.anthropic.claude-sonnet-4-6';
 
 // Session switch detection — track which bot+group we last served
 let currentSessionKey: string | undefined;
@@ -236,6 +237,7 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
     for await (const message of query({
       prompt,
       options: {
+        model: payload.model || DEFAULT_MODEL,
         cwd: '/workspace/group',
         additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
         resume: sessionId,

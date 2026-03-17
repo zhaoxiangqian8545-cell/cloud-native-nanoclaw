@@ -121,6 +121,7 @@ async function dispatchMessage(
       channelType: payload.channelType,
       prompt,
       systemPrompt: bot.systemPrompt,
+      model: bot.model,
       sessionPath: `${payload.userId}/${payload.botId}/sessions/${payload.groupJid}/`,
       memoryPaths: {
         shared: `${payload.userId}/shared/CLAUDE.md`,
@@ -252,6 +253,7 @@ async function dispatchTask(
     channelType,
     prompt: task.prompt,
     systemPrompt: bot.systemPrompt,
+    model: bot.model,
     isScheduledTask: true,
     sessionPath: `${payload.userId}/${payload.botId}/sessions/${payload.groupJid}/`,
     memoryPaths: {

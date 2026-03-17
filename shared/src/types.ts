@@ -45,6 +45,7 @@ export interface Bot {
   description?: string;
   systemPrompt?: string;
   triggerPattern: string; // e.g. "@BotName"
+  model?: string; // e.g. "global.anthropic.claude-sonnet-4-6"
   status: 'created' | 'active' | 'paused' | 'deleted';
   containerConfig?: BotContainerConfig;
   createdAt: string;
@@ -188,6 +189,7 @@ export interface InvocationPayload {
   channelType: ChannelType;
   prompt: string;
   systemPrompt?: string;
+  model?: string; // e.g. "global.anthropic.claude-sonnet-4-6"
   sessionPath: string; // S3 path: {userId}/{botId}/sessions/{groupJid}/
   memoryPaths: MemoryPaths;
   attachments?: Attachment[];
@@ -232,6 +234,7 @@ export interface CreateBotRequest {
   description?: string;
   systemPrompt?: string;
   triggerPattern?: string;
+  model?: string;
 }
 
 export interface CreateChannelRequest {
@@ -252,6 +255,7 @@ export interface UpdateBotRequest {
   description?: string;
   systemPrompt?: string;
   triggerPattern?: string;
+  model?: string;
   status?: 'active' | 'paused' | 'deleted';
 }
 
