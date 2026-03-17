@@ -1,24 +1,27 @@
 /**
  * ClawBot Cloud — Structured System Prompt Builder
  *
- * Assembles the system prompt from modular sections, inspired by OpenClaw's
- * architecture but adapted for NanoClaw's multi-tenant model.
+ * Assembles the system prompt from a base template + dynamic sections.
+ * Uses direct mode (string) instead of Claude Code preset append.
+ *
+ * Structure:
+ *   Base template     — loaded from /app/templates/system-prompt-base.md
+ *   Dynamic sections  — assembled from context files + runtime config
  *
  * Section order:
- *   1. Identity          — "You are {botName}..."
- *   2. Identity Context  — IDENTITY.md or Bot.systemPrompt fallback
- *   3. Soul             — SOUL.md (values and behavior)
- *   4. Bootstrap        — BOOTSTRAP.md (only for new sessions)
- *   5. Channel          — Channel-specific formatting guidance
- *   6. Reply Guide      — Response conventions
- *   7. User Context     — USER.md (about the human user, user-level)
- *   8. Memory           — Shared + Bot Global + Group CLAUDE.md (with token budgets)
- *   9. Runtime          — Metadata line for debugging
- *
- * Result is appended to Claude Code preset:
- *   { type: 'preset', preset: 'claude_code', append: builtContent }
+ *   [Base Template]        — Role, Tools, Context Files, Safety, Communication Style
+ *   1. Identity            — "You are {botName}..."
+ *   2. Identity Context    — IDENTITY.md or Bot.systemPrompt fallback
+ *   3. Soul               — SOUL.md (values and behavior)
+ *   4. Bootstrap           — BOOTSTRAP.md (only for new sessions)
+ *   5. Channel             — Channel-specific formatting guidance
+ *   6. Reply Guide         — Response conventions
+ *   7. User Context        — USER.md (about the human user)
+ *   8. Memory              — Shared + Bot Global + Group CLAUDE.md (with token budgets)
+ *   9. Runtime             — Metadata line for debugging
  */
 
+import { readFileSync } from 'fs';
 import type { ChannelType } from '@clawbot/shared';
 import {
   loadMemoryLayers,
@@ -30,6 +33,16 @@ import {
   DEFAULT_TRUNCATION,
   type TruncationConfig,
 } from './memory.js';
+
+// ── Base template (loaded once at module init) ───────────────────────────
+
+let baseTemplate = '';
+try {
+  baseTemplate = readFileSync('/app/templates/system-prompt-base.md', 'utf-8');
+} catch {
+  // Fallback for local development / testing
+  baseTemplate = '# Role\nYou are a conversational AI assistant.';
+}
 
 // ── Public Interface ──────────────────────────────────────────────────────
 
@@ -47,14 +60,17 @@ export interface SystemPromptOptions {
 }
 
 /**
- * Build the complete system prompt content to append to Claude Code preset.
- * Sections are joined with `---` separators. Null sections are skipped.
+ * Build the complete system prompt (direct mode, not append).
+ * Base template + dynamic sections joined with `---` separators.
  */
 export async function buildSystemPrompt(
   opts: SystemPromptOptions,
 ): Promise<string> {
   const config = opts.truncationConfig ?? DEFAULT_TRUNCATION;
   const sections: string[] = [];
+
+  // 0. Base template (Role, Tools, Context Files, Safety, Communication Style)
+  sections.push(baseTemplate);
 
   // 1. Identity
   sections.push(buildIdentitySection(opts.botName));
@@ -129,7 +145,7 @@ async function buildSoulSection(
   if (!soul) return null;
 
   if (config) soul = truncateContent(soul, config.perFileCap, config);
-  return `# Your Soul\nThese are your core values and behavioral guidelines:\n\n${soul}`;
+  return `# Your Soul\nEmbody this persona and tone. Avoid stiff, generic replies; follow its guidance naturally:\n\n${soul}`;
 }
 
 // ── Section 4: Bootstrap ──────────────────────────────────────────────────

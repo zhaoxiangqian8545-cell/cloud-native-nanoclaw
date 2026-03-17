@@ -66,34 +66,47 @@ clawbot-agent 容器 (ARM64, node:22-slim)
 │   ├── Hooks: PreCompact → 归档对话到 S3
 │   └── CLAUDE_CODE_USE_BEDROCK=1 → Bedrock Claude (IAM Role)
 │
-├── MCP Server (clawbot-tools)
-│   ├── send_message     → SQS (回复队列)
-│   ├── schedule_task    → DynamoDB + EventBridge Scheduler
-│   ├── list_tasks       → DynamoDB 查询
-│   ├── pause/resume/cancel_task → DynamoDB 更新
-│   └── (不再有 register_group, 改由 Web UI 完成)
+├── MCP Server (nanoclawbot, stdio 传输)
+│   ├── send_message     → SQS 回复队列 (中间消息即时送达)
+│   ├── schedule_task    → DynamoDB + EventBridge Scheduler (含验证)
+│   ├── list_tasks       → DynamoDB 查询 (当前 bot 的所有任务)
+│   ├── pause_task       → DynamoDB 更新 + 禁用 EventBridge schedule
+│   ├── resume_task      → DynamoDB 更新 + 启用 EventBridge schedule
+│   ├── cancel_task      → DynamoDB 删除 + 删除 EventBridge schedule
+│   ├── update_task      → DynamoDB 更新 + 更新 EventBridge schedule
+│   └── 验证: validateCron/validateInterval/validateOnce
 │
-├── S3 Client
-│   ├── 启动时: 恢复 session 文件 + CLAUDE.md 记忆
-│   └── 结束时: 回写 session 文件 + 记忆变更
+├── S3 Client (Scoped via STS ABAC)
+│   ├── 启动时: syncFromS3 — session + 7 个 context 文件
+│   │   (CLAUDE.md ×3, IDENTITY.md, SOUL.md, BOOTSTRAP.md, USER.md)
+│   └── 结束时: syncToS3 — session + CLAUDE.md + context 文件变更
+│       (BOOTSTRAP.md 被 Agent 删除时自动从 S3 移除)
 │
 ├── 系统依赖
 │   ├── Chromium (agent-browser 浏览器自动化)
 │   ├── git, curl (Agent Bash 工具需要)
 │   └── agent-browser CLI (全局安装)
 │
+├── Session 切换检测
+│   └── 同一 warm container 服务不同 bot/group 时自动清理 workspace
+│
 └── 工作目录结构
     /workspace/
     ├── group/            # 工作目录 (cwd), S3 恢复的群组文件
     │   ├── CLAUDE.md     # 群组记忆 (从 S3 加载, 读写)
-    │   ├── conversations/ # 对话归档 (PreCompact hook 写入)
-    │   └── attachments/  # 多媒体附件 (从 S3 下载)
+    │   └── conversations/ # 对话归档 (PreCompact hook 写入)
     ├── global/           # Bot 全局记忆 (从 S3 加载, 只读)
     │   └── CLAUDE.md
-    ├── shared/           # 用户共享知识 (从 S3 加载, 只读, 跨 Bot)
-    │   └── CLAUDE.md
-    └── .claude/          # Claude SDK session 文件 (从 S3 恢复)
-        └── projects/
+    ├── shared/           # 用户共享知识 (从 S3 加载)
+    │   ├── CLAUDE.md     # 只读
+    │   └── USER.md       # 读写 (用户档案)
+    ├── identity/         # Bot 身份文件 (从 S3 加载, 读写)
+    │   ├── IDENTITY.md   # 身份定义 (首次由模板创建)
+    │   ├── SOUL.md       # 价值观和行为
+    │   └── BOOTSTRAP.md  # 首次引导 (完成后由 Agent 删除)
+    ├── extra/            # 额外挂载目录 (可选, 插件用)
+    /home/node/.claude/   # Claude SDK session 文件 (从 S3 恢复)
+    └── projects/
 ```
 
 ### 9.3 Dockerfile
@@ -264,39 +277,44 @@ export async function handleInvocation(payload: InvocationPayload): Promise<Invo
       scopedClients = await createScopedClients(userId, botId);
     }
 
-    // ── 2. S3 同步 (session 切换或首次调用时恢复, 使用 scoped S3 client) ──
-    if (!scopedClients._restored) {
-      await syncFromS3(scopedClients.s3, {
-        sessionPath,                           // → /home/node/.claude/
-        memoryPath,                            // → /workspace/group/
-        globalMemoryPath,                      // → /workspace/global/
-        sharedMemoryPath,                      // → /workspace/shared/ (跨 Bot 只读)
-      });
-      scopedClients._restored = true;
+    // ── 2. Session 切换检测 → 不同 bot/group 则清理 workspace ──
+    if (currentSessionKey && currentSessionKey !== `${botId}#${groupJid}`) {
+      await cleanLocalWorkspace();
+    }
+    currentSessionKey = `${botId}#${groupJid}`;
+
+    // ── 3. S3 同步 (恢复 session + 7 个 context 文件) ──
+    await syncFromS3(scopedClients.s3, SESSION_BUCKET, {
+      sessionPath,                           // → /home/node/.claude/
+      groupMemory,                           // → /workspace/group/CLAUDE.md
+      botGlobalMemory,                       // → /workspace/global/CLAUDE.md
+      sharedMemory,                          // → /workspace/shared/CLAUDE.md
+      identityFile,                          // → /workspace/identity/IDENTITY.md
+      soulFile,                              // → /workspace/identity/SOUL.md
+      bootstrapFile,                         // → /workspace/identity/BOOTSTRAP.md
+      userFile,                              // → /workspace/shared/USER.md
+    });
+
+    // ── 4. 模板检查: 首次运行 → 复制默认模板 ──
+    if (!existsSync('/workspace/identity/IDENTITY.md')) {
+      copyIfMissing('/app/templates', 'BOOTSTRAP.md', '/workspace/identity');
+      copyIfMissing('/app/templates', 'IDENTITY.md', '/workspace/identity');
+      copyIfMissing('/app/templates', 'SOUL.md', '/workspace/identity');
+    }
+    if (!existsSync('/workspace/shared/USER.md')) {
+      copyIfMissing('/app/templates', 'USER.md', '/workspace/shared');
     }
 
-    // ── 2. 构建 prompt ──
-    let formattedPrompt = prompt;
-    if (isScheduledTask) {
-      formattedPrompt = `[SCHEDULED TASK]\n\n${prompt}`;
-    }
+    // ── 5. 检测已有 session (用于 bootstrap 注入决策) ──
+    const existingSessionId = detectExistingSession();
+    const isNewSession = !existingSessionId;
 
-    // ── 3. 加载多层记忆 (追加到 system prompt) ──
-    const memoryParts: string[] = [];
-
-    // 用户共享记忆 (跨 Bot, 如公司上下文)
-    try {
-      const shared = fs.readFileSync('/workspace/shared/CLAUDE.md', 'utf-8');
-      if (shared.trim()) memoryParts.push(`# Shared Knowledge\n${shared}`);
-    } catch { /* 无共享记忆 */ }
-
-    // Bot 全局记忆
-    try {
-      const global = fs.readFileSync('/workspace/global/CLAUDE.md', 'utf-8');
-      if (global.trim()) memoryParts.push(global);
-    } catch { /* 无全局记忆 */ }
-
-    const combinedMemory = memoryParts.length > 0 ? memoryParts.join('\n\n---\n\n') : undefined;
+    // ── 6. 构建结构化 System Prompt (9 sections, 详见 §16) ──
+    const systemPromptContent = await buildSystemPrompt({
+      botId, botName, channelType, groupJid,
+      systemPrompt: payload.systemPrompt,
+      isScheduledTask, isNewSession,
+    });
 
     // ── 3.5 下载并引用附件 (图片/文件/语音) ──
     if (attachments?.length) {
@@ -314,28 +332,36 @@ export async function handleInvocation(payload: InvocationPayload): Promise<Invo
     let lastResult: string | null = null;
 
     for await (const message of query({
-      prompt: stream,
+      prompt: agentPrompt,
       options: {
         cwd: '/workspace/group',
-        systemPrompt: combinedMemory
-          ? { type: 'preset', preset: 'claude_code', append: combinedMemory }
+        additionalDirectories: extraDirs,        // /workspace/extra/* (可选)
+        resume: existingSessionId,               // 续接已有 session
+        systemPrompt: systemPromptContent
+          ? { type: 'preset', preset: 'claude_code', append: systemPromptContent }
           : undefined,
         allowedTools: [
           'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep',
           'WebSearch', 'WebFetch',
           'Task', 'TaskOutput', 'TaskStop',
           'TeamCreate', 'TeamDelete', 'SendMessage',
-          'NotebookEdit',
-          'mcp__clawbot__*',
+          'TodoWrite', 'ToolSearch', 'Skill', 'NotebookEdit',
+          'mcp__nanoclawbot__*',
         ],
-        maxTurns: maxTurns || 50,
-        env: { ...process.env },
+        maxTurns: payload.maxTurns,
+        env: { ...process.env, CLAUDE_CODE_USE_BEDROCK: '1' },
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
-        settingSources: ['project'],
-        mcpServers: mcpConfig,
+        settingSources: ['project', 'user'],
+        mcpServers: {
+          nanoclawbot: {
+            command: 'node',
+            args: [mcpServerPath],
+            env: { CLAWBOT_BOT_ID, CLAWBOT_GROUP_JID, CLAWBOT_USER_ID, ... },
+          },
+        },
         hooks: {
-          PreCompact: [{ hooks: [createPreCompactHook(botName, sessionPath)] }],
+          PreCompact: [{ hooks: [createPreCompactHook(botName)] }],
         },
       }
     })) {
@@ -556,13 +582,23 @@ export async function syncFromS3(s3: S3Client, paths: SyncPaths): Promise<void> 
  * Agent 执行结束后: 回写变更到 S3
  * @param s3 - ABAC scoped S3 client (限定 {userId}/{botId}/ 路径)
  */
-export async function syncToS3(s3: S3Client, paths: Pick<SyncPaths, 'sessionPath' | 'memoryPath'>): Promise<void> {
-  // 回写 Claude session 文件
-  await uploadDirectory(s3, '/home/node/.claude/', paths.sessionPath);
+export async function syncToS3(s3: S3Client, bucket: string, paths: SyncPaths): Promise<void> {
+  // 1. 回写 Claude session 文件
+  await uploadDirectory(s3, bucket, '/home/node/.claude/', paths.sessionPath);
 
-  // 回写群组记忆 (仅 CLAUDE.md 和 conversations/)
-  await uploadFileIfChanged(s3, '/workspace/group/CLAUDE.md', `${paths.memoryPath}CLAUDE.md`);
-  await uploadDirectory(s3, '/workspace/group/conversations/', `${paths.memoryPath}conversations/`);
+  // 2. 回写群组记忆 (CLAUDE.md 和 conversations/)
+  await uploadFile(s3, bucket, '/workspace/group/CLAUDE.md', paths.groupMemory);
+  await uploadDirectory(s3, bucket, '/workspace/group/conversations/', conversationsPrefix);
+
+  // 3. 回写 context 文件 (IDENTITY.md, SOUL.md, BOOTSTRAP.md, USER.md)
+  //    如本地文件存在 → 上传; 如被 Agent 删除 → 从 S3 移除
+  for (const { localPath, s3Key } of contextFiles) {
+    if (existsSync(localPath)) {
+      await uploadFile(s3, bucket, localPath, s3Key);
+    } else {
+      await deleteS3Object(s3, bucket, s3Key);  // Agent 删除了文件 (如 BOOTSTRAP.md)
+    }
+  }
 }
 
 async function downloadPrefix(s3: S3Client, s3Prefix: string, localDir: string): Promise<void> {

@@ -171,7 +171,34 @@ PUT /api/bots/{bot_id}/channels/{ch_id}
     └── 5. 刷新 Fargate 内存缓存 (凭证缓存 TTL 到期自动刷新)
 ```
 
-### 8.6 多媒体消息处理
+### 8.6 Discord Gateway 与 Leader 选举
+
+Discord 使用 Gateway (WebSocket) 持久连接接收消息，而非 Webhook。多 Fargate Task 场景需要确保只有一个实例连接 Gateway。
+
+```
+Leader 选举机制 (DynamoDB 分布式锁)
+─────────────────────────────────────
+锁表:   sessions (复用, PK=__system__, SK=discord-gateway-leader)
+锁 TTL: 60 秒
+续约:   每 30 秒
+Standby 轮询: 每 30 秒检查锁是否过期
+
+流程:
+  Task-1 启动 → tryAcquireLock() → 成功 → becomeLeader()
+  Task-2 启动 → tryAcquireLock() → 失败 → startStandbyPoll()
+  Task-1 崩溃 → 60s 后锁过期 → Task-2 检测到 → 接管 Leader
+
+Leader 职责:
+  ├── 扫描 channels 表发现所有 Discord channels
+  ├── 从 Secrets Manager 加载 bot tokens
+  ├── discord.js Client.login(token)
+  ├── 监听 MessageCreate → handleMessage() → SQS 入队
+  ├── 监听 InteractionCreate → handleSlashCommand()
+  ├── 自动注册 guild slash commands (Ready 事件)
+  └── 管理 typing 指示器 (每 9s 发送直到回复完成)
+```
+
+### 8.7 多媒体消息处理
 
 Telegram/Discord/Slack/WhatsApp 消息可能包含图片、文件、语音、视频。当前核心流程只处理文本，多媒体需要额外的处理链路。
 

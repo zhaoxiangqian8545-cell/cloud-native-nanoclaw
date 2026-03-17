@@ -61,17 +61,19 @@ web-console (standalone — talks to control-plane via REST)
 
 ### Package roles
 
-- **shared** (`@clawbot/shared`) — Domain types (User, Bot, Channel, Message, Task, Session), XML formatter for agent context, text utilities. Exports via subpath exports: `@clawbot/shared/types`, `@clawbot/shared/xml-formatter`, `@clawbot/shared/text-utils`.
-- **control-plane** (`@clawbot/control-plane`) — Fastify HTTP server on ECS Fargate. Handles webhook ingestion (Telegram/Discord/Slack), REST API for the web console (JWT-authed via Cognito), SQS FIFO message dispatching to AgentCore, and reply consumption back to channel APIs.
+- **shared** (`@clawbot/shared`) — Domain types (User, Bot, Channel, Message, Task, Session), Channel Adapter interfaces, XML formatter for agent context, text utilities. Exports via subpath exports: `@clawbot/shared/types`, `@clawbot/shared/channel-adapter`, `@clawbot/shared/xml-formatter`, `@clawbot/shared/text-utils`.
+- **control-plane** (`@clawbot/control-plane`) — Fastify HTTP server on ECS Fargate. Handles webhook ingestion (Telegram/Discord/Slack), Discord Gateway (discord.js with leader election), REST API for the web console (JWT-authed via Cognito, including admin APIs), SQS FIFO message dispatching to AgentCore, SQS reply consumption via Channel Adapter Registry, channel health checking, and memory management (IDENTITY.md/SOUL.md/BOOTSTRAP.md/USER.md).
 - **agent-runtime** (`@clawbot/agent-runtime`) — Runs inside AgentCore microVMs. Wraps Claude Agent SDK with MCP tools (send_message, schedule_task, etc.). Manages S3 session sync, multi-layer CLAUDE.md memory, and STS ABAC scoped credentials. Exposes `/invocations` and `/ping` endpoints.
 - **infra** (`@clawbot/infra`) — AWS CDK (TypeScript). 6 stacks: Foundation (VPC, S3, DynamoDB, SQS, ECR), Auth (Cognito), Agent (IAM ABAC roles), ControlPlane (ALB, ECS, WAF), Frontend (CloudFront + S3), Monitoring (CloudWatch).
-- **web-console** (`@clawbot/web-console`) — React 19 SPA with Vite, TailwindCSS, AWS Amplify for Cognito auth. Pages: Login, Dashboard, BotDetail, ChannelSetup, Messages, Tasks.
+- **web-console** (`@clawbot/web-console`) — React 19 SPA with Vite, TailwindCSS, AWS Amplify for Cognito auth. Pages: Login, Dashboard, BotDetail, ChannelSetup, Messages, Tasks, MemoryEditor (7-level: Shared/UserProfile/Identity/Soul/Bootstrap/BotMemory/GroupMemory), Admin UserList/UserDetail.
 
 ### Message flow
 
-User message → Channel webhook → Control Plane (signature verification, DynamoDB store) → SQS FIFO → SQS consumer → AgentCore invocation → Claude Agent SDK `query()` → MCP tools → response stored in DynamoDB → Channel API reply.
+User message → Channel webhook/Gateway → Control Plane (signature verification, DynamoDB store) → SQS FIFO → SQS consumer (quota check, concurrency control) → AgentCore invocation → Claude Agent SDK `query()` (structured system prompt, 9 sections) → MCP tools → response stored in DynamoDB → Channel Adapter Registry → Channel API reply.
 
-SQS FIFO provides per-group message ordering with cross-group parallelism.
+Agent intermediate messages: MCP `send_message` → SQS Standard reply queue → Reply Consumer → Channel Adapter → Channel API.
+
+SQS FIFO provides per-group message ordering with cross-group parallelism. Discord uses Gateway (WebSocket) with DynamoDB-based leader election instead of webhooks.
 
 ### Security model
 
@@ -96,12 +98,16 @@ SQS FIFO provides per-group message ordering with cross-group parallelism.
 | AWS SDK v3 | 3.700+ | control-plane, agent-runtime |
 | Claude Agent SDK | 0.2.76 | agent-runtime |
 | MCP SDK | 1.0.0 | agent-runtime |
+| discord.js | 14.25 | control-plane (Discord Gateway) |
+| aws-jwt-verify | 4.0 | control-plane (Cognito JWT) |
 | Zod | 4.0 | shared, control-plane, agent-runtime |
 | React | 19 | web-console |
+| react-router-dom | 7.1 | web-console |
 | AWS Amplify | 6.12 | web-console |
 | AWS CDK | 2.170 | infra |
 | Vitest | 2.1 | control-plane (testing) |
 | Pino | 9.6 | control-plane, agent-runtime (logging) |
+| cron-parser | 5.5 | control-plane, agent-runtime (schedule validation) |
 
 ## Conventions
 

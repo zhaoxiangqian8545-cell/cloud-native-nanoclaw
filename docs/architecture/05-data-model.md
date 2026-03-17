@@ -16,11 +16,11 @@ email, display_name, created_at, last_login,
 # 配额与计划
 plan (free/pro/enterprise),
 quota (JSON): {
-  max_bots: 3,                    # 最大 Bot 数
-  max_groups_per_bot: 10,         # 每 Bot 最大 Group 数
-  max_tasks_per_bot: 20,          # 每 Bot 最大定时任务数
-  max_concurrent_agents: 2,       # 最大并发 Agent 数
-  max_monthly_tokens: 500000,     # 每月最大 Bedrock token 用量
+  max_bots: 5,                    # 最大 Bot 数
+  max_groups_per_bot: 20,         # 每 Bot 最大 Group 数
+  max_tasks_per_bot: 50,          # 每 Bot 最大定时任务数
+  max_concurrent_agents: 3,       # 最大并发 Agent 数
+  max_monthly_tokens: 100000000,  # 每月最大 Bedrock token 用量 (100M)
 },
 
 # 用量追踪 (按月滚动)
@@ -49,15 +49,13 @@ PK: bot_id    SK: channel_type#channel_id
 ─────────────────────────────────────────
 channel_type (telegram/discord/slack/whatsapp),
 credential_secret_arn (Secrets Manager ARN),
-webhook_url, status (connected/disconnected/error),
+webhook_url, status (connected/disconnected/error/pending_webhook),
 config (JSON), created_at,
 
 # 凭证健康检查
 last_health_check: "2026-03-14T10:00:00Z",  # 上次检查时间
 health_status: "healthy" | "unhealthy" | "unknown",
-health_error: "401 Unauthorized",             # 最近的错误信息 (如有)
-consecutive_failures: 0,                      # 连续失败次数
-user_notified_at: null                        # 通知用户的时间 (避免重复通知)
+consecutive_failures: 0,                      # 连续失败次数 (≥3 则标记 unhealthy)
 ```
 
 #### groups 表
@@ -123,35 +121,42 @@ last_active_at, status
 ```
 s3://clawbot-data/
 ├── {user_id}/
-│   ├── shared/                          # 用户级共享知识 (跨 Bot 只读)
-│   │   └── CLAUDE.md                    # 用户共享记忆 (如公司上下文)
+│   ├── shared/                          # 用户级 (跨 Bot)
+│   │   ├── CLAUDE.md                    # 用户共享记忆 (Agent 只读)
+│   │   └── USER.md                      # 用户档案 (Agent 读写)
 │   │
 │   └── {bot_id}/
+│       ├── IDENTITY.md                  # Bot 身份定义 (Agent 读写)
+│       ├── SOUL.md                      # Bot 价值观和行为 (Agent 读写)
+│       ├── BOOTSTRAP.md                 # 首次引导 (Agent 完成后删除)
 │       ├── memory/
-│       │   ├── global/CLAUDE.md         # Bot 全局记忆
-│       │   └── {group_jid}/CLAUDE.md    # Group 记忆
+│       │   ├── global/CLAUDE.md         # Bot 全局记忆 (Agent 只读)
+│       │   └── {group_jid}/
+│       │       ├── CLAUDE.md            # Group 记忆 (Agent 读写)
+│       │       └── conversations/       # 对话归档 (PreCompact hook 写入)
 │       ├── sessions/
 │       │   └── {group_jid}/
 │       │       └── .claude/             # Claude Agent SDK session 文件
 │       │           ├── session.jsonl
 │       │           └── projects/...
-│       ├── archives/
-│       │   └── conversations/           # 对话归档
-│       └── attachments/                 # 多媒体附件 (图片/文件/语音)
+│       └── attachments/                 # 多媒体附件 (图片/文件)
 │           └── {message_id}/
 │               ├── image.jpg
-│               ├── voice.ogg
 │               └── document.pdf
 
-记忆加载优先级 (Agent 启动时):
-  1. {userId}/shared/CLAUDE.md          → /workspace/shared/ (只读, 跨 Bot)
-  2. {userId}/{botId}/memory/global/    → /workspace/global/ (只读, Bot 级)
-  3. {userId}/{botId}/memory/{groupJid}/ → /workspace/group/ (读写, Group 级)
+Context 文件加载 (Agent 启动时 syncFromS3):
+  1. {userId}/shared/CLAUDE.md          → /workspace/shared/CLAUDE.md (只读)
+  2. {userId}/shared/USER.md            → /workspace/shared/USER.md (读写)
+  3. {userId}/{botId}/IDENTITY.md       → /workspace/identity/IDENTITY.md (读写)
+  4. {userId}/{botId}/SOUL.md           → /workspace/identity/SOUL.md (读写)
+  5. {userId}/{botId}/BOOTSTRAP.md      → /workspace/identity/BOOTSTRAP.md (读写)
+  6. {userId}/{botId}/memory/global/    → /workspace/global/CLAUDE.md (只读)
+  7. {userId}/{botId}/memory/{groupJid}/ → /workspace/group/CLAUDE.md (读写)
 
-记忆写入权限:
-  - shared/CLAUDE.md:   仅用户通过 Web UI 编辑 (Agent 只读)
-  - global/CLAUDE.md:   Agent 可写 (Bot 级持久记忆)
-  - {groupJid}/CLAUDE.md: Agent 可写 (Group 级持久记忆)
+Context 文件回写 (Agent 结束时 syncToS3):
+  - group/CLAUDE.md + conversations/ → 始终回写
+  - IDENTITY.md, SOUL.md, USER.md → 如存在则上传
+  - BOOTSTRAP.md → 如被 Agent 删除则从 S3 移除 (首次引导完成)
 ```
 
 ### 5.3 Secrets Manager 结构
@@ -169,4 +174,33 @@ clawbot/{bot_id}/slack/{channel_id}
 
 clawbot/{bot_id}/whatsapp/{channel_id}
   → { "phone_number_id": "...", "access_token": "...", "app_secret": "..." }
+```
+
+### 5.4 SQS 消息 Payload 类型
+
+```typescript
+// 入站 FIFO 队列 (Webhook/Gateway → Consumer)
+type SqsPayload = SqsInboundPayload | SqsTaskPayload;
+
+interface SqsInboundPayload {
+  type: 'inbound_message';
+  botId, groupJid, userId, messageId, channelType, timestamp;
+  attachments?: Attachment[];           // 多媒体附件元数据
+  replyContext?: {                      // 频道特定回复上下文
+    discordInteractionToken?: string;   // Slash command 回调 (15min TTL)
+    discordChannelId?: string;
+    slackResponseUrl?: string;
+  };
+}
+
+interface SqsTaskPayload {
+  type: 'scheduled_task';
+  botId, groupJid, userId, taskId, timestamp;
+}
+
+// 回复标准队列 (Agent send_message → Reply Consumer)
+interface SqsReplyPayload {
+  type: 'reply';
+  botId, groupJid, channelType, text, timestamp;
+}
 ```

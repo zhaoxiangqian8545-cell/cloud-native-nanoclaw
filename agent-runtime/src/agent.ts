@@ -36,7 +36,7 @@ const SESSION_BUCKET = process.env.SESSION_BUCKET || '';
 let currentSessionKey: string | undefined;
 
 async function cleanLocalWorkspace(): Promise<void> {
-  for (const dir of ['/workspace/group', '/workspace/global', '/workspace/shared', '/workspace/identity', '/home/node/.claude']) {
+  for (const dir of ['/workspace/group', '/workspace/global', '/workspace/shared', '/workspace/identity', '/workspace/reference', '/home/node/.claude']) {
     try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     try { mkdirSync(dir, { recursive: true }); } catch { /* ignore */ }
   }
@@ -109,6 +109,8 @@ async function _handleInvocation(
   if (!fs.existsSync('/workspace/shared/USER.md')) {
     copyIfMissing(TEMPLATES, 'USER.md', '/workspace/shared');
   }
+  // Always ensure coding reference is available for on-demand loading
+  copyIfMissing(TEMPLATES, 'CODING_REFERENCE.md', '/workspace/reference');
 
   // 4. Detect existing session (needed for bootstrap injection decision)
   const existingSessionId = detectExistingSession();
@@ -237,9 +239,7 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
         cwd: '/workspace/group',
         additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
         resume: sessionId,
-        systemPrompt: systemPromptContent
-          ? { type: 'preset' as const, preset: 'claude_code' as const, append: systemPromptContent }
-          : undefined,
+        systemPrompt: systemPromptContent || undefined,
         // Same tool allowlist as NanoClaw's agent-runner
         allowedTools: [
           'Bash',
@@ -308,10 +308,10 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
         }
 
         case 'assistant': {
-          const msg = (message as { message?: { content?: unknown[]; model?: string; usage?: { input_tokens?: number; output_tokens?: number } } }).message;
+          const msg = (message as { message?: { content?: unknown[]; model?: string; usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number } } }).message;
           const usage = msg?.usage;
           if (usage) {
-            tokensUsed += (usage.input_tokens || 0) + (usage.output_tokens || 0);
+            tokensUsed += (usage.input_tokens || 0) + (usage.output_tokens || 0) + (usage.cache_creation_input_tokens || 0);
           }
           // Extract tool_use blocks from assistant content
           const content = msg?.content as Array<{ type: string; name?: string; id?: string; text?: string }> | undefined;
@@ -322,6 +322,8 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
               model: msg?.model,
               inputTokens: usage?.input_tokens,
               outputTokens: usage?.output_tokens,
+              cacheCreation: usage?.cache_creation_input_tokens,
+              cacheRead: usage?.cache_read_input_tokens,
               toolUses: toolUses.length > 0 ? toolUses : undefined,
               textPreview: textBlocks.length > 0 ? textBlocks[0].slice(0, 150) : undefined,
             },

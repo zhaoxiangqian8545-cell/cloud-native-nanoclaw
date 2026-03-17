@@ -8,8 +8,9 @@
 ┌─────────────────────────────────────┐
 │ 层级 1: 用户认证                      │
 │ ├── Cognito User Pool (JWT)          │
-│ ├── Express 中间件 JWT 验证           │
-│ └── 所有 /api/* 端点需要认证           │
+│ ├── Fastify 中间件 JWT 验证 (aws-jwt-verify) │
+│ ├── 所有 /api/* 端点需要认证           │
+│ └── /api/admin/* 需 clawbot-admins 组 │
 ├─────────────────────────────────────┤
 │ 层级 2: 资源隔离 (Control Plane)      │
 │ ├── Bot 查询附加 user_id 条件         │
@@ -109,15 +110,17 @@ Agent Scoped Role (STS AssumeRole 获取, 带 Session Tags)
 
 ```
 Plan 配置 (users 表 quota 字段):
+默认配额 (DEFAULT_QUOTA in shared/types.ts):
 
-| 配额项                  | Free   | Pro     | Enterprise |
-|------------------------|--------|---------|------------|
-| max_bots               | 1      | 5       | 50         |
-| max_groups_per_bot     | 3      | 20      | 200        |
-| max_tasks_per_bot      | 5      | 50      | 500        |
-| max_concurrent_agents  | 1      | 3       | 10         |
-| max_monthly_tokens     | 100K   | 1M      | 10M        |
-| max_message_length     | 4K     | 16K     | 64K        |
+| 配额项                  | 默认值  | 说明 |
+|------------------------|--------|------|
+| maxBots                | 5      | 最大 Bot 数 |
+| maxGroupsPerBot        | 20     | 每 Bot 最大 Group 数 |
+| maxTasksPerBot         | 50     | 每 Bot 最大定时任务数 |
+| maxConcurrentAgents    | 3      | 最大并发 Agent 数 |
+| maxMonthlyTokens       | 100M   | 每月最大 Bedrock token 用量 |
+
+Plan 类型: free / pro / enterprise (通过 Admin API 调整配额)
 ```
 
 #### 检查时机

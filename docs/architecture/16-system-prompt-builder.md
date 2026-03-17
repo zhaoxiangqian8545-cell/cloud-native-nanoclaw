@@ -94,8 +94,9 @@ agent-runtime/templates/
            │               │                  │
            ▼               ▼                  ▼
     ┌──────────────────────────────────────────────┐
-    │              8 Sections (in order)             │
+    │             10 Sections (in order)            │
     │                                               │
+    │  0. Role Override ← "你是消息助手，不是代码编辑器"│
     │  1. Identity      ← botName                   │
     │  2. About You     ← IDENTITY.md / systemPrompt│
     │  3. Your Soul     ← SOUL.md                   │
@@ -113,13 +114,29 @@ agent-runtime/templates/
               systemPrompt: {
                 type: 'preset',
                 preset: 'claude_code',
-                append: builtContent    ← 8 sections joined by ---
+                append: builtContent    ← 10 sections joined by ---
               }
 ```
 
 ---
 
 ## 16.4 Section 详解
+
+### Section 0: Role Override
+
+```
+# IMPORTANT: Role Context
+You are running as a conversational AI assistant inside a messaging channel.
+You are NOT a code editor waiting for instructions. You are an active participant in conversations.
+
+Key behaviors:
+- Respond naturally and conversationally to messages
+- If context files have blank fields, proactively fill them in using the Write tool
+- If BOOTSTRAP.md is present, follow it proactively
+- After updating identity files, delete BOOTSTRAP.md
+```
+
+始终存在。**覆盖 Claude Code preset 的默认行为**——将 Agent 从"等待代码编辑指令"模式切换到"主动对话"模式。这是让 Bootstrap 流程生效的关键 section。
 
 ### Section 1: Identity
 
@@ -145,12 +162,12 @@ IDENTITY.md 定义 Agent 的身份：名字、角色、性格、专长。由 Age
 
 ```
 # Your Soul
-These are your core values and behavioral guidelines:
+Embody this persona and tone. Avoid stiff, generic replies; follow its guidance naturally:
 
 {SOUL.md 内容}
 ```
 
-SOUL.md 定义 Agent 的价值观、沟通风格、边界。如不存在则跳过。
+借鉴 OpenClaw 的措辞："embody its persona and tone"。SOUL.md 定义 Agent 的价值观、沟通风格、边界。如不存在则跳过。
 
 ### Section 4: Bootstrap
 
@@ -291,7 +308,7 @@ System prompt 通过 `append` 模式注入：
 systemPrompt: {
   type: 'preset',
   preset: 'claude_code',
-  append: builtContent   // ← 我们构建的 9 sections
+  append: builtContent   // ← 我们构建的 10 sections
 }
 ```
 
@@ -324,12 +341,13 @@ systemPrompt: {
    ├─ detectExistingSession(): 判断 isNewSession
    │
    ├─ buildSystemPrompt():
+   │    ├─ buildRoleOverride()   → "你是消息助手，不是代码编辑器"
    │    ├─ loadIdentityFile()    → /workspace/identity/IDENTITY.md
    │    ├─ loadSoulFile()        → /workspace/identity/SOUL.md
    │    ├─ loadBootstrapFile()   → /workspace/identity/BOOTSTRAP.md (if new)
    │    ├─ loadUserFile()        → /workspace/shared/USER.md
    │    ├─ loadMemoryLayers()    → 3× CLAUDE.md with truncation
-   │    └─ assemble 9 sections   → joined string
+   │    └─ assemble 10 sections  → joined string
    │
    ├─ query({ prompt, systemPrompt: { preset: 'claude_code', append: built } })
    │    └─ Claude Agent SDK 执行...

@@ -36,6 +36,14 @@ describe('buildSystemPrompt', () => {
     vi.restoreAllMocks();
   });
 
+  // ── Base Template ──────────────────────────────────────────────────
+
+  it('always includes base template', async () => {
+    const result = await buildSystemPrompt(baseOpts);
+    // In test mode, base template falls back to minimal version
+    expect(result).toContain('# Role');
+  });
+
   // ── Section 1: Identity ─────────────────────────────────────────────
 
   it('always includes identity section with bot name', async () => {
@@ -105,16 +113,16 @@ describe('buildSystemPrompt', () => {
   });
 
   it('skips BOOTSTRAP.md for resumed sessions', async () => {
-    vi.mocked(memoryModule.loadBootstrapFile).mockResolvedValue('Should not appear');
+    vi.mocked(memoryModule.loadBootstrapFile).mockResolvedValue('BOOTSTRAP_CONTENT_SHOULD_NOT_APPEAR');
 
     const result = await buildSystemPrompt({ ...baseOpts, isNewSession: false });
-    expect(result).not.toContain('First Session Instructions');
-    expect(result).not.toContain('Should not appear');
+    expect(result).not.toContain('BOOTSTRAP_CONTENT_SHOULD_NOT_APPEAR');
   });
 
   it('skips bootstrap section when file does not exist even for new session', async () => {
     const result = await buildSystemPrompt({ ...baseOpts, isNewSession: true });
-    expect(result).not.toContain('First Session Instructions');
+    // Bootstrap section header should not appear (only role override mentions it generically)
+    expect(result).not.toContain('# First Session Instructions\nThis is a new conversation');
   });
 
   // ── Section 4: Channel Guidance ─────────────────────────────────────
@@ -224,6 +232,8 @@ describe('buildSystemPrompt', () => {
 
     const result = await buildSystemPrompt({ ...baseOpts, isNewSession: true });
 
+    const roleIdx = result.indexOf('# Role');
+    expect(roleIdx).toBeGreaterThanOrEqual(0);
     const identityIdx = result.indexOf('# Identity');
     const aboutYouIdx = result.indexOf('# About You');
     const soulIdx = result.indexOf('# Your Soul');
@@ -234,6 +244,7 @@ describe('buildSystemPrompt', () => {
     const memoryIdx = result.indexOf('# Shared Memory');
     const runtimeIdx = result.indexOf('Runtime:');
 
+    expect(roleIdx).toBeLessThan(identityIdx);
     expect(identityIdx).toBeLessThan(aboutYouIdx);
     expect(aboutYouIdx).toBeLessThan(soulIdx);
     expect(soulIdx).toBeLessThan(bootstrapIdx);
