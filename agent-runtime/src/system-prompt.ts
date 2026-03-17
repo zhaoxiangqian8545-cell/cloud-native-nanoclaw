@@ -9,7 +9,7 @@
  *   Dynamic sections  — assembled from context files + runtime config
  *
  * Section order:
- *   [Base Template]        — Role, Tools, Tool Call Style, Context Files, Safety, Communication Style
+ *   [Base Template]        — Role, Tools, Tool Call Style, Context Files, Communication Style
  *   1. Identity            — "You are {botName}..."
  *   2. Identity Context    — IDENTITY.md or Bot.systemPrompt fallback
  *   3. Soul               — SOUL.md (values and behavior)
@@ -74,7 +74,7 @@ export async function buildSystemPrompt(
   const config = opts.truncationConfig ?? DEFAULT_TRUNCATION;
   const sections: string[] = [];
 
-  // 0. Base template (Role, Tools, Context Files, Safety, Communication Style)
+  // 0. Base template (Role, Tools, Context Files, Communication Style)
   sections.push(baseTemplate);
 
   // 1. Identity
