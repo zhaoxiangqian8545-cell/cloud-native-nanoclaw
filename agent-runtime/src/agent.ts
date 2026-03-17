@@ -121,7 +121,6 @@ async function _handleInvocation(
   }
   // Always ensure reference files are available for on-demand loading
   copyIfMissing(TEMPLATES, 'CODING_REFERENCE.md', '/workspace/reference');
-  copyIfMissing(TEMPLATES, 'SELF_IMPROVEMENT.md', '/workspace/reference');
 
   // 4. Detect existing session (needed for bootstrap injection decision)
   const existingSessionId = detectExistingSession();
