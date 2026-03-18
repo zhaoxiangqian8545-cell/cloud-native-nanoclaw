@@ -1,7 +1,7 @@
 // ClawBot Cloud — Webhook Signature Verification
 // Per-channel verification of inbound webhook authenticity
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
 // ── Telegram ────────────────────────────────────────────────────────────────
 // Telegram sends a secret token in X-Telegram-Bot-Api-Secret-Token header.
@@ -111,6 +111,30 @@ export function verifySlackSignature(
     .update(sigBaseString)
     .digest('hex');
   const expected = `${SLACK_VERSION}=${hmac}`;
+
+  // Constant-time comparison
+  const expectedBuf = Buffer.from(expected);
+  const signatureBuf = Buffer.from(signature);
+  if (expectedBuf.length !== signatureBuf.length) return false;
+  return timingSafeEqual(expectedBuf, signatureBuf);
+}
+
+// ── Feishu ──────────────────────────────────────────────────────────────────
+// Feishu (飞书/Lark) Event Subscription verification.
+// Signature = SHA256(timestamp + nonce + encryptKey + body)
+// Compared with X-Lark-Signature header using constant-time comparison.
+
+export function verifyFeishuSignature(
+  timestamp: string,
+  nonce: string,
+  encryptKey: string,
+  body: string,
+  signature: string,
+): boolean {
+  if (!timestamp || !nonce || !encryptKey || !body || !signature) return false;
+
+  const content = timestamp + nonce + encryptKey + body;
+  const expected = createHash('sha256').update(content).digest('hex');
 
   // Constant-time comparison
   const expectedBuf = Buffer.from(expected);

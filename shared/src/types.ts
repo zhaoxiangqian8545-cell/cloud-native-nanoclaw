@@ -60,7 +60,7 @@ export interface BotContainerConfig {
 // --- Channel (DynamoDB: channels table, PK=botId, SK=channelType#channelId) ---
 // Evolved from NanoClaw's Channel interface — now BYOK credentials
 
-export type ChannelType = 'telegram' | 'discord' | 'slack' | 'whatsapp';
+export type ChannelType = 'telegram' | 'discord' | 'slack' | 'whatsapp' | 'feishu';
 
 export interface ChannelConfig {
   botId: string;
