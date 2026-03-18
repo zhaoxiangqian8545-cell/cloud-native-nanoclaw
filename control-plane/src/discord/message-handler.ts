@@ -86,29 +86,24 @@ export async function handleDiscordMessage({
   // Process attachments
   const attachments: Attachment[] = [];
   for (const [, da] of message.attachments) {
-    const ct = da.contentType || '';
+    const ct = da.contentType || 'application/octet-stream';
+    logger.info({ botId, name: da.name, contentType: da.contentType, size: da.size, url: da.url?.slice(0, 80) }, 'Processing Discord attachment');
     if (ct.startsWith('audio/') || ct.startsWith('video/')) {
       content += '\n[Voice/Video message — not yet supported]';
       continue;
     }
-    if (
-      ct.startsWith('image/') ||
-      ct.startsWith('application/') ||
-      ct.startsWith('text/')
-    ) {
-      try {
-        const att = await downloadAndStore(
-          bot.userId,
-          botId,
-          messageId,
-          da.url,
-          da.name,
-          ct,
-        );
-        if (att) attachments.push(att);
-      } catch (err) {
-        logger.warn({ err, botId }, 'Failed to download Discord attachment');
-      }
+    try {
+      const att = await downloadAndStore(
+        bot.userId,
+        botId,
+        messageId,
+        da.url,
+        da.name,
+        ct,
+      );
+      if (att) attachments.push(att);
+    } catch (err) {
+      logger.warn({ err, botId, name: da.name }, 'Failed to download Discord attachment');
     }
   }
 
