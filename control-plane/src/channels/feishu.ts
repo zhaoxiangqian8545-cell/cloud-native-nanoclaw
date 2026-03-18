@@ -21,6 +21,11 @@ export function getFeishuApiBase(domain: FeishuDomain = 'feishu'): string {
 /**
  * Obtains a tenant_access_token via the internal app auth endpoint.
  * POST /open-apis/auth/v3/tenant_access_token/internal/
+ *
+ * TODO: Add token caching before production use. The tenant_access_token is
+ * valid for ~2 hours (expire field in response), but currently every API call
+ * fetches a fresh token. Cache by appId+domain with TTL from the expire field
+ * (minus a safety margin) to reduce latency and avoid rate limits.
  */
 export async function getFeishuTenantToken(
   appId: string,
@@ -156,7 +161,7 @@ export async function replyFeishuMessage(
 ): Promise<void> {
   const token = await getFeishuTenantToken(appId, appSecret, domain);
   const base = getFeishuApiBase(domain);
-  const url = `${base}/open-apis/im/v1/messages/${messageId}/reply`;
+  const url = `${base}/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reply`;
 
   const resp = await fetch(url, {
     method: 'POST',
@@ -232,6 +237,8 @@ export async function verifyFeishuCredentials(
  * Download a message attachment (image, file, etc.) via im.message.resources.
  * GET /open-apis/im/v1/messages/:message_id/resources/:file_key?type=...
  * Returns the raw response body as an ArrayBuffer.
+ *
+ * @param resourceType - 'file' for file attachments, 'image' for inline images.
  */
 export async function downloadFeishuResource(
   appId: string,
@@ -239,10 +246,11 @@ export async function downloadFeishuResource(
   messageId: string,
   fileKey: string,
   domain: FeishuDomain = 'feishu',
+  resourceType: 'file' | 'image' = 'file',
 ): Promise<ArrayBuffer> {
   const token = await getFeishuTenantToken(appId, appSecret, domain);
   const base = getFeishuApiBase(domain);
-  const url = `${base}/open-apis/im/v1/messages/${messageId}/resources/${fileKey}?type=file`;
+  const url = `${base}/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/resources/${encodeURIComponent(fileKey)}?type=${resourceType}`;
 
   const resp = await fetch(url, {
     method: 'GET',

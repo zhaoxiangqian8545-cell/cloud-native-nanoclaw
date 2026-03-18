@@ -124,6 +124,8 @@ export function verifySlackSignature(
 // Signature = SHA256(timestamp + nonce + encryptKey + body)
 // Compared with X-Lark-Signature header using constant-time comparison.
 
+const FEISHU_MAX_AGE_SECONDS = 5 * 60; // 5 minutes replay window
+
 export function verifyFeishuSignature(
   timestamp: string,
   nonce: string,
@@ -132,6 +134,12 @@ export function verifyFeishuSignature(
   signature: string,
 ): boolean {
   if (!timestamp || !nonce || !encryptKey || !body || !signature) return false;
+
+  // Reject requests older than 5 minutes to prevent replay attacks
+  const tsNum = Number(timestamp);
+  if (isNaN(tsNum)) return false;
+  const age = Math.abs(Math.floor(Date.now() / 1000) - tsNum);
+  if (age > FEISHU_MAX_AGE_SECONDS) return false;
 
   const content = timestamp + nonce + encryptKey + body;
   const expected = createHash('sha256').update(content).digest('hex');
