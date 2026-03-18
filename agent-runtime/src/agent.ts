@@ -548,10 +548,22 @@ async function downloadAttachments(
   const attachDir = '/workspace/group/attachments';
   await mkdir(attachDir, { recursive: true });
 
-  for (const att of attachments) {
+  for (let i = 0; i < attachments.length; i++) {
+    const att = attachments[i];
     try {
-      const fileName = att.fileName || att.s3Key.split('/').pop() || 'file';
+      // Sanitize fileName: strip directory components, replace unsafe chars
+      const rawName = att.fileName || att.s3Key.split('/').pop() || 'file';
+      const safeName = path.basename(rawName).replace(/[^\w.\-]/g, '_') || 'file';
+      // Prefix with index to avoid collisions (e.g. multiple image.png)
+      const fileName = attachments.length > 1 ? `${i}-${safeName}` : safeName;
       const localPath = path.join(attachDir, fileName);
+
+      // Belt-and-suspenders path traversal check
+      if (!localPath.startsWith(attachDir + '/')) {
+        logger.warn({ fileName, localPath }, 'Attachment path traversal attempt, skipping');
+        continue;
+      }
+
       const resp = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: att.s3Key }));
       if (resp.Body) {
         const bytes = await resp.Body.transformToByteArray();
