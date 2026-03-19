@@ -20,6 +20,7 @@ const createBotSchema = z.object({
   systemPrompt: z.string().max(10000).optional(),
   triggerPattern: z.string().max(200).optional(),
   model: z.string().min(1).max(200).optional(),
+  modelProvider: z.enum(['bedrock', 'anthropic-api']).optional(),
 });
 
 const updateBotSchema = z.object({
@@ -28,6 +29,7 @@ const updateBotSchema = z.object({
   systemPrompt: z.string().max(10000).optional(),
   triggerPattern: z.string().max(200).optional(),
   model: z.string().min(1).max(200).optional(),
+  modelProvider: z.enum(['bedrock', 'anthropic-api']).optional(),
   status: z.enum(['active', 'paused', 'deleted']).optional(),
 });
 
@@ -69,6 +71,7 @@ export const botsRoutes: FastifyPluginAsync = async (app) => {
       systemPrompt: body.systemPrompt,
       triggerPattern: body.triggerPattern || `@${body.name}`,
       model: body.model,
+      modelProvider: body.modelProvider,
       status: 'created',
       createdAt: now,
       updatedAt: now,
@@ -107,6 +110,17 @@ export const botsRoutes: FastifyPluginAsync = async (app) => {
         if (!allowed || !allowed.includes(updates.status)) {
           return reply.status(400).send({
             error: `Invalid status transition from '${existing.status}' to '${updates.status}'`,
+          });
+        }
+      }
+
+      // Validate API key exists when switching to anthropic-api
+      if (updates.modelProvider === 'anthropic-api') {
+        const { getAnthropicApiKey } = await import('../../services/secrets.js');
+        const apiKey = await getAnthropicApiKey(request.userId);
+        if (!apiKey) {
+          return reply.status(400).send({
+            error: 'Anthropic API key not configured. Set it via Settings before switching provider.',
           });
         }
       }
