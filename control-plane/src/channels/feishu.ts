@@ -18,20 +18,34 @@ export function getFeishuApiBase(domain: FeishuDomain = 'feishu'): string {
     : 'https://open.feishu.cn';
 }
 
+// ── Token Cache ───────────────────────────────────────────────────────────
+
+interface CachedToken {
+  token: string;
+  expiresAt: number; // Date.now() ms
+}
+
+const tokenCache = new Map<string, CachedToken>();
+const TOKEN_SAFETY_MARGIN_MS = 5 * 60 * 1000; // refresh 5 min before expiry
+
 /**
  * Obtains a tenant_access_token via the internal app auth endpoint.
  * POST /open-apis/auth/v3/tenant_access_token/internal/
  *
- * TODO: Add token caching before production use. The tenant_access_token is
- * valid for ~2 hours (expire field in response), but currently every API call
- * fetches a fresh token. Cache by appId+domain with TTL from the expire field
- * (minus a safety margin) to reduce latency and avoid rate limits.
+ * Tokens are cached in-memory by appId+domain. The token is valid for ~2 hours;
+ * cache refreshes 5 minutes before expiry to avoid edge-case failures.
  */
 export async function getFeishuTenantToken(
   appId: string,
   appSecret: string,
   domain: FeishuDomain = 'feishu',
 ): Promise<string> {
+  const cacheKey = `${appId}:${domain}`;
+  const cached = tokenCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.token;
+  }
+
   const base = getFeishuApiBase(domain);
   const url = `${base}/open-apis/auth/v3/tenant_access_token/internal/`;
   const resp = await fetch(url, {
@@ -51,12 +65,20 @@ export async function getFeishuTenantToken(
     code: number;
     msg: string;
     tenant_access_token?: string;
+    expire?: number; // seconds until expiry
   };
   if (data.code !== 0 || !data.tenant_access_token) {
     throw new Error(
       `Feishu tenant_access_token error: code=${data.code} msg=${data.msg}`,
     );
   }
+
+  const expireSec = data.expire ?? 7200; // default 2 hours
+  tokenCache.set(cacheKey, {
+    token: data.tenant_access_token,
+    expiresAt: Date.now() + expireSec * 1000 - TOKEN_SAFETY_MARGIN_MS,
+  });
+
   return data.tenant_access_token;
 }
 

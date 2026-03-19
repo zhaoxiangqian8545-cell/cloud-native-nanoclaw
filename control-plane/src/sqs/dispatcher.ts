@@ -59,7 +59,7 @@ async function buildFeishuConfig(
     const feishuChannel = channels.find((c) => c.channelType === 'feishu');
     if (!feishuChannel) return undefined;
 
-    // Tool config from channel config (defaults: all enabled)
+    // Tool config from channel config (defaults: doc + wiki enabled, drive + perm require opt-in)
     const toolConfig = (feishuChannel.config?.tools ?? {}) as Partial<
       Record<'doc' | 'wiki' | 'drive' | 'perm', boolean>
     >;
@@ -70,8 +70,8 @@ async function buildFeishuConfig(
       tools: {
         doc: toolConfig.doc !== false,
         wiki: toolConfig.wiki !== false,
-        drive: toolConfig.drive !== false,
-        perm: toolConfig.perm !== false,
+        drive: toolConfig.drive === true,
+        perm: toolConfig.perm === true,
       },
     };
   } catch (err) {
