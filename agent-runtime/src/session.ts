@@ -172,34 +172,69 @@ async function uploadFile(
   }
 }
 
+/** Allowed path prefixes for symlink targets — prevent exfiltration of host files */
+const ALLOWED_SYMLINK_ROOTS = ['/home/node/', '/workspace/'];
+
 async function uploadDirectory(
   s3: S3Client,
   bucket: string,
   localDir: string,
   prefix: string,
   logger: pino.Logger,
+  visited?: Set<string>,
 ): Promise<void> {
+  // Circular symlink protection: track canonical paths already visited
+  const canonical = await realpath(localDir).catch(() => localDir);
+  const seen = visited ?? new Set<string>();
+  if (seen.has(canonical)) {
+    logger.debug({ localDir, canonical }, 'Circular symlink detected, skipping');
+    return;
+  }
+  seen.add(canonical);
+
   try {
     const entries = await readdir(localDir, { recursive: true, withFileTypes: true });
+    // Track which relative paths readdir already yielded as files (via symlink follow)
+    // to avoid duplicate uploads when readdir traverses into symlinked dirs on some platforms.
+    const uploadedRels = new Set<string>();
+
     for (const entry of entries) {
       const fullPath = join(entry.parentPath || entry.path, entry.name);
       const rel = relative(localDir, fullPath);
 
       if (entry.isFile()) {
+        uploadedRels.add(rel);
         await uploadFile(s3, bucket, fullPath, prefix + rel, logger);
       } else if (entry.isSymbolicLink()) {
         // Symlinks (e.g. skills installed by Claude Code) may point to
         // directories outside the sync root. Resolve and upload the target.
         try {
           const realTarget = await realpath(fullPath);
+
+          // Security: only follow symlinks that resolve within allowed paths
+          if (!ALLOWED_SYMLINK_ROOTS.some((root) => realTarget.startsWith(root))) {
+            logger.warn({ fullPath, realTarget }, 'Symlink target outside allowed paths, skipping');
+            continue;
+          }
+
           const targetStat = await stat(realTarget);
           if (targetStat.isFile()) {
-            await uploadFile(s3, bucket, realTarget, prefix + rel, logger);
+            if (!uploadedRels.has(rel)) {
+              await uploadFile(s3, bucket, realTarget, prefix + rel, logger);
+            }
           } else if (targetStat.isDirectory()) {
-            await uploadDirectory(s3, bucket, realTarget, prefix + rel + '/', logger);
+            // Only recurse if readdir didn't already yield children for this path
+            const childPrefix = rel + '/';
+            const alreadyTraversed = [...uploadedRels].some((r) => r.startsWith(childPrefix));
+            if (!alreadyTraversed) {
+              await uploadDirectory(s3, bucket, realTarget, prefix + rel + '/', logger, seen);
+            }
           }
-        } catch {
-          logger.debug({ fullPath }, 'Broken symlink, skipping');
+        } catch (err) {
+          logger.debug(
+            { fullPath, error: err instanceof Error ? err.message : String(err) },
+            'Broken or inaccessible symlink, skipping',
+          );
         }
       }
     }
