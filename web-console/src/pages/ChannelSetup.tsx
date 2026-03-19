@@ -420,7 +420,57 @@ function FeishuGuide({ step }: { step: 'before' | 'after' }) {
               <p className="text-blue-700 mt-0.5">
                 在「<strong>权限管理</strong>」中申请以下权限：
               </p>
-              <p className="mt-1 text-blue-600 text-xs">推荐使用「批量开通」导入权限，或手动逐个申请：</p>
+              <p className="mt-1 text-blue-600 text-xs">推荐使用「批量开通」导入以下 JSON，或手动逐个申请：</p>
+              <details className="mt-2 mb-2">
+                <summary className="cursor-pointer text-blue-700 text-xs font-medium hover:text-blue-900">点击展开批量导入 JSON</summary>
+                <div className="mt-1.5 relative">
+                  <pre className="bg-white border border-blue-200 rounded p-3 text-xs text-blue-900 overflow-x-auto max-h-48 overflow-y-auto font-mono leading-relaxed">{`{
+  "scopes": {
+    "tenant": [
+      "aily:file:read",
+      "aily:file:write",
+      "application:application.app_message_stats.overview:readonly",
+      "application:application:self_manage",
+      "application:bot.menu:write",
+      "cardkit:card:read",
+      "cardkit:card:write",
+      "contact:user.employee_id:readonly",
+      "corehr:file:download",
+      "docs:doc",
+      "docs:doc:readonly",
+      "docx:document",
+      "docx:document:readonly",
+      "drive:drive",
+      "drive:drive:readonly",
+      "drive:file:permission:member",
+      "event:ip_list",
+      "im:chat.access_event.bot_p2p_chat:read",
+      "im:chat.members:bot_access",
+      "im:message",
+      "im:message.group_at_msg:readonly",
+      "im:message.p2p_msg:readonly",
+      "im:message:readonly",
+      "im:message:send_as_bot",
+      "im:resource",
+      "wiki:wiki",
+      "wiki:wiki:readonly"
+    ],
+    "user": [
+      "aily:file:read",
+      "aily:file:write",
+      "im:chat.access_event.bot_p2p_chat:read"
+    ]
+  }
+}`}</pre>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(JSON.stringify({"scopes":{"tenant":["aily:file:read","aily:file:write","application:application.app_message_stats.overview:readonly","application:application:self_manage","application:bot.menu:write","cardkit:card:read","cardkit:card:write","contact:user.employee_id:readonly","corehr:file:download","docs:doc","docs:doc:readonly","docx:document","docx:document:readonly","drive:drive","drive:drive:readonly","drive:file:permission:member","event:ip_list","im:chat.access_event.bot_p2p_chat:read","im:chat.members:bot_access","im:message","im:message.group_at_msg:readonly","im:message.p2p_msg:readonly","im:message:readonly","im:message:send_as_bot","im:resource","wiki:wiki","wiki:wiki:readonly"],"user":["aily:file:read","aily:file:write","im:chat.access_event.bot_p2p_chat:read"]}}, null, 2))}
+                    className="absolute top-2 right-2 px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </details>
               <p className="mt-2 mb-0.5 font-medium text-blue-800 text-xs">消息（必需）</p>
               <ul className="ml-4 list-disc text-blue-700 space-y-0.5">
                 <li><code className="bg-blue-100 px-1 rounded">im:message</code> — 获取与发送消息</li>
