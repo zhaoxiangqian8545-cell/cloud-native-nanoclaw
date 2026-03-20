@@ -224,6 +224,6 @@ export const memory = {
   updateShared: (content: string) => request<MemoryResponse>('/shared-memory', { method: 'PUT', body: JSON.stringify({ content }) }),
   getBotGlobal: (botId: string) => request<MemoryResponse>(`/bots/${botId}/memory`),
   updateBotGlobal: (botId: string, content: string) => request<MemoryResponse>(`/bots/${botId}/memory`, { method: 'PUT', body: JSON.stringify({ content }) }),
-  getGroup: (botId: string, gid: string) => request<MemoryResponse>(`/bots/${botId}/groups/${gid}/memory`),
-  updateGroup: (botId: string, gid: string, content: string) => request<MemoryResponse>(`/bots/${botId}/groups/${gid}/memory`, { method: 'PUT', body: JSON.stringify({ content }) }),
+  getGroup: (botId: string, gid: string) => request<MemoryResponse>(`/bots/${botId}/groups/${encodeURIComponent(gid)}/memory`),
+  updateGroup: (botId: string, gid: string, content: string) => request<MemoryResponse>(`/bots/${botId}/groups/${encodeURIComponent(gid)}/memory`, { method: 'PUT', body: JSON.stringify({ content }) }),
 };
