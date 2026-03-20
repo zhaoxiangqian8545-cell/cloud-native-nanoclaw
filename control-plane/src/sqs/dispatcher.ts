@@ -286,6 +286,20 @@ async function dispatchMessage(
         { botId: payload.botId, error: result.error },
         'Agent invocation failed',
       );
+
+      // Notify the user about the error so they're not left waiting.
+      // TODO: Sanitize before production — raw error may contain ARNs, bucket names, userId.
+      // Currently acceptable for dev (no external access), but must be replaced with a
+      // generic message before public deployment.
+      const errorText = `Sorry, something went wrong while processing your message.\n\nError: ${result.error || 'Unknown error'}`;
+      await sendChannelReply(
+        payload.botId,
+        payload.groupJid,
+        payload.channelType,
+        errorText,
+        logger,
+        payload.replyContext,
+      );
     }
 
     // 10. Update session (always record model/provider for change detection)
