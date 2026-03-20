@@ -3,7 +3,7 @@
 
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { getUser, listAllUsers, listBots, updateUserQuota, updateUserPlan } from '../../services/dynamo.js';
+import { getUser, listAllUsers, listBots, updateUserQuota, updateUserPlan, getPlanQuotas, savePlanQuotas } from '../../services/dynamo.js';
 
 const quotaSchema = z.object({
   maxBots: z.number().int().min(0).optional(),
@@ -17,6 +17,20 @@ const quotaSchema = z.object({
 
 const planSchema = z.object({
   plan: z.enum(['free', 'pro', 'enterprise']),
+});
+
+const userQuotaSchema = z.object({
+  maxBots: z.number().int().min(0),
+  maxGroupsPerBot: z.number().int().min(0),
+  maxTasksPerBot: z.number().int().min(0),
+  maxConcurrentAgents: z.number().int().min(0),
+  maxMonthlyTokens: z.number().int().min(0),
+});
+
+const planQuotasSchema = z.object({
+  free: userQuotaSchema,
+  pro: userQuotaSchema,
+  enterprise: userQuotaSchema,
 });
 
 export const adminRoutes: FastifyPluginAsync = async (app) => {
@@ -94,6 +108,18 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     }
     const { plan } = planSchema.parse(request.body);
     await updateUserPlan(request.params.userId, plan);
+    return { ok: true };
+  });
+
+  // Get plan quotas
+  app.get('/plans', async () => {
+    return getPlanQuotas();
+  });
+
+  // Update plan quotas
+  app.put('/plans', async (request) => {
+    const quotas = planQuotasSchema.parse(request.body);
+    await savePlanQuotas(quotas);
     return { ok: true };
   });
 };
