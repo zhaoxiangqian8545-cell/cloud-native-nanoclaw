@@ -32,6 +32,7 @@ export default function App() {
         <Route path="/bots/:botId/channels/new" element={<ChannelSetup />} />
         <Route path="/bots/:botId/channels/setup" element={<ChannelSetup />} />
         <Route path="/bots/:botId/messages/:groupJid" element={<Messages />} />
+        <Route path="/bots/:botId/groups/:groupJid/memory" element={<MemoryEditor />} />
         <Route path="/memory" element={<MemoryEditor />} />
         <Route path="/settings" element={<Settings />} />
         {user.isAdmin && (
