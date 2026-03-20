@@ -41,6 +41,18 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     }
   });
 
+  // Get plan quotas (must be before /:userId to avoid param capture)
+  app.get('/plans', async () => {
+    return getPlanQuotas();
+  });
+
+  // Update plan quotas
+  app.put('/plans', async (request) => {
+    const quotas = planQuotasSchema.parse(request.body);
+    await savePlanQuotas(quotas);
+    return { ok: true };
+  });
+
   // List all users
   app.get('/', async () => {
     const users = await listAllUsers();
@@ -111,15 +123,4 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
     return { ok: true };
   });
 
-  // Get plan quotas
-  app.get('/plans', async () => {
-    return getPlanQuotas();
-  });
-
-  // Update plan quotas
-  app.put('/plans', async (request) => {
-    const quotas = planQuotasSchema.parse(request.body);
-    await savePlanQuotas(quotas);
-    return { ok: true };
-  });
 };
