@@ -18,11 +18,10 @@ import type {
   SqsTaskPayload,
   Message,
 } from '@clawbot/shared';
-import type { ModelProvider, Session } from '@clawbot/shared';
+import type { ModelProvider, ProviderType, Session } from '@clawbot/shared';
 import { config } from '../config.js';
 import {
   getGroup,
-  getUser,
   ensureUser,
   putMessage,
   putSession,
@@ -32,8 +31,9 @@ import {
   checkAndAcquireAgentSlot,
   releaseAgentSlot,
   getChannelsByBot,
+  getProvider,
 } from '../services/dynamo.js';
-import { getAnthropicApiKey, getProxyRules } from '../services/secrets.js';
+import { getProviderApiKey, getProxyRules } from '../services/secrets.js';
 import { getCachedBot } from '../services/cached-lookups.js';
 import { getRegistry } from '../adapters/registry.js';
 import type { ReplyContext, ReplyOptions } from '@clawbot/shared/channel-adapter';
@@ -96,30 +96,54 @@ async function buildFeishuConfig(
 }
 
 async function resolveProviderCredentials(
-  bot: { modelProvider?: ModelProvider; botId: string },
+  bot: { providerId?: string; modelId?: string; model?: string; modelProvider?: ModelProvider; botId: string },
   userId: string,
   logger: Logger,
-): Promise<{ modelProvider?: ModelProvider; anthropicApiKey?: string; anthropicBaseUrl?: string }> {
-  if (bot.modelProvider !== 'anthropic-api') return {};
+): Promise<{ model?: string; modelProvider?: ModelProvider; providerType?: ProviderType; anthropicApiKey?: string; anthropicBaseUrl?: string }> {
+  // New path: use providerId from providers table
+  if (bot.providerId) {
+    try {
+      const provider = await getProvider(bot.providerId);
+      if (!provider) {
+        logger.warn({ providerId: bot.providerId, botId: bot.botId }, 'Provider not found, falling back to bedrock');
+        return {};
+      }
 
-  try {
-    const [apiKey, userData] = await Promise.all([
-      getAnthropicApiKey(userId),
-      getUser(userId),
-    ]);
-    if (!apiKey) {
-      logger.warn({ userId, botId: bot.botId }, 'Bot set to anthropic-api but no API key found, falling back to bedrock');
+      const result: Record<string, unknown> = {
+        model: bot.modelId,
+        providerType: provider.providerType,
+      };
+
+      if (provider.providerType === 'anthropic-compatible-api') {
+        result.modelProvider = 'anthropic-api' as ModelProvider;
+        if (provider.hasApiKey) {
+          const apiKey = await getProviderApiKey(provider.providerId);
+          if (apiKey) {
+            result.anthropicApiKey = apiKey;
+          }
+        }
+        if (provider.baseUrl) {
+          result.anthropicBaseUrl = provider.baseUrl;
+        }
+      } else {
+        result.modelProvider = 'bedrock' as ModelProvider;
+      }
+
+      return result as ReturnType<typeof resolveProviderCredentials> extends Promise<infer T> ? T : never;
+    } catch (err) {
+      logger.error({ err, providerId: bot.providerId }, 'Failed to resolve provider, falling back to bedrock');
       return {};
     }
-    return {
-      modelProvider: 'anthropic-api',
-      anthropicApiKey: apiKey,
-      anthropicBaseUrl: (userData as unknown as Record<string, unknown>)?.anthropicBaseUrl as string || undefined,
-    };
-  } catch (err) {
-    logger.error({ err, userId }, 'Failed to resolve provider credentials, falling back to bedrock');
-    return {};
   }
+
+  // Legacy path: bot still has old modelProvider field (migration-period fallback).
+  // Note: API key will NOT be resolved here — bots should be migrated to use a provider.
+  if (bot.modelProvider === 'anthropic-api') {
+    logger.warn({ botId: bot.botId }, 'Bot uses legacy modelProvider=anthropic-api without providerId — API key will not be resolved. Migrate bot to use a provider.');
+    return { modelProvider: 'anthropic-api' };
+  }
+
+  return {};
 }
 
 // ── Default Proxy Rules ─────────────────────────────────────────────────────
@@ -255,13 +279,14 @@ async function dispatchMessage(
 
     // 6c. Check for model/provider change → force new session if needed
     const effectiveProvider = providerCreds.modelProvider ?? bot.modelProvider;
+    const effectiveModel = providerCreds.model || bot.model;
     const existingSession = await getSession(payload.botId, payload.groupJid);
-    const forceNewSession = shouldResetSession(existingSession, bot.model, effectiveProvider);
+    const forceNewSession = shouldResetSession(existingSession, effectiveModel, effectiveProvider);
     if (forceNewSession) {
       logger.info(
         {
           botId: payload.botId, groupJid: payload.groupJid,
-          oldModel: existingSession?.lastModel, newModel: bot.model,
+          oldModel: existingSession?.lastModel, newModel: effectiveModel,
           oldProvider: existingSession?.lastModelProvider, newProvider: effectiveProvider,
         },
         'Model/provider change detected, forcing new session',
@@ -277,7 +302,7 @@ async function dispatchMessage(
       channelType: payload.channelType,
       prompt,
       systemPrompt: bot.systemPrompt,
-      model: bot.model,
+      model: providerCreds.model || bot.model,
       sessionPath: `${payload.userId}/${payload.botId}/sessions/${payload.groupJid}/`,
       memoryPaths: {
         botClaude: `${payload.userId}/${payload.botId}/CLAUDE.md`,
@@ -371,7 +396,7 @@ async function dispatchMessage(
         s3SessionPath: invocationPayload.sessionPath,
         lastActiveAt: new Date().toISOString(),
         status: 'active',
-        lastModel: bot.model,
+        lastModel: effectiveModel,
         lastModelProvider: effectiveProvider,
       });
     }
@@ -430,8 +455,9 @@ async function dispatchTask(
 
   // Check for model/provider change
   const effectiveProvider = providerCreds.modelProvider ?? bot.modelProvider;
+  const effectiveModel = providerCreds.model || bot.model;
   const existingSession = await getSession(payload.botId, payload.groupJid);
-  const forceNewSession = shouldResetSession(existingSession, bot.model, effectiveProvider);
+  const forceNewSession = shouldResetSession(existingSession, effectiveModel, effectiveProvider);
   if (forceNewSession) {
     logger.info(
       { botId: payload.botId, groupJid: payload.groupJid },
@@ -447,7 +473,7 @@ async function dispatchTask(
     channelType,
     prompt: task.prompt,
     systemPrompt: bot.systemPrompt,
-    model: bot.model,
+    model: providerCreds.model || bot.model,
     isScheduledTask: true,
     sessionPath: `${payload.userId}/${payload.botId}/sessions/${payload.groupJid}/`,
     memoryPaths: {
@@ -507,7 +533,7 @@ async function dispatchTask(
       s3SessionPath: invocationPayload.sessionPath,
       lastActiveAt: new Date().toISOString(),
       status: 'active',
-      lastModel: bot.model,
+      lastModel: effectiveModel,
       lastModelProvider: effectiveProvider,
     });
   }

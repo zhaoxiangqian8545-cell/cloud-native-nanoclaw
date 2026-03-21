@@ -62,6 +62,21 @@ export interface User {
 
 // --- Model Provider ---
 
+export type ProviderType = 'bedrock' | 'anthropic-compatible-api';
+
+export interface Provider {
+  providerId: string;
+  providerName: string;
+  providerType: ProviderType;
+  baseUrl?: string;
+  hasApiKey: boolean;
+  modelIds: string[];
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** @deprecated Use ProviderType instead — kept for Session.lastModelProvider backward compat */
 export type ModelProvider = 'bedrock' | 'anthropic-api';
 
 // --- Bot (DynamoDB: bots table, PK=userId, SK=botId) ---
@@ -74,7 +89,11 @@ export interface Bot {
   description?: string;
   systemPrompt?: string;
   triggerPattern: string; // e.g. "@BotName"
-  model?: string; // e.g. "global.anthropic.claude-sonnet-4-6"
+  providerId?: string;   // References providers table
+  modelId?: string;      // One of provider's modelIds
+  /** @deprecated Use providerId/modelId */
+  model?: string;
+  /** @deprecated Use providerId/modelId */
   modelProvider?: ModelProvider;
   status: 'created' | 'active' | 'paused' | 'deleted';
   containerConfig?: BotContainerConfig;
@@ -228,6 +247,7 @@ export interface InvocationPayload {
   systemPrompt?: string;
   model?: string; // e.g. "global.anthropic.claude-sonnet-4-6"
   modelProvider?: ModelProvider;
+  providerType?: ProviderType;
   anthropicApiKey?: string;
   anthropicBaseUrl?: string;
   sessionPath: string; // S3 path: {userId}/{botId}/sessions/{groupJid}/
@@ -319,8 +339,8 @@ export interface CreateBotRequest {
   description?: string;
   systemPrompt?: string;
   triggerPattern?: string;
-  model?: string;
-  modelProvider?: ModelProvider;
+  providerId?: string;
+  modelId?: string;
 }
 
 export interface CreateChannelRequest {
@@ -341,8 +361,8 @@ export interface UpdateBotRequest {
   description?: string;
   systemPrompt?: string;
   triggerPattern?: string;
-  model?: string;
-  modelProvider?: ModelProvider;
+  providerId?: string;
+  modelId?: string;
   status?: 'active' | 'paused' | 'deleted';
 }
 
