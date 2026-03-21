@@ -106,6 +106,14 @@ const AUTH_TYPE_LABELS: Record<string, string> = {
   'basic': 'Basic Auth',
 };
 
+const PRESETS: Array<Omit<ProxyRuleInput, 'value'> & { description: string }> = [
+  { name: 'Anthropic', prefix: '/anthropic', target: 'https://api.anthropic.com', authType: 'api-key', headerName: 'x-api-key', description: 'Claude API (direct key)' },
+  { name: 'OpenAI', prefix: '/openai', target: 'https://api.openai.com', authType: 'bearer', description: 'GPT / DALL-E / Whisper' },
+  { name: 'GitHub', prefix: '/github', target: 'https://api.github.com', authType: 'bearer', description: 'Repos, issues, PRs' },
+  { name: 'Jira', prefix: '/jira', target: 'https://your-domain.atlassian.net', authType: 'basic', description: 'Atlassian Jira (user:token)' },
+  { name: 'Google AI', prefix: '/google-ai', target: 'https://generativelanguage.googleapis.com', authType: 'api-key', headerName: 'x-goog-api-key', description: 'Gemini API' },
+];
+
 function CredentialsTab() {
   const [rules, setRules] = useState<ProxyRuleSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,6 +138,12 @@ function CredentialsTab() {
   function startNew() {
     setEditing('new');
     setForm({ name: '', prefix: '/', target: 'https://', authType: 'bearer', value: '' });
+    setError('');
+  }
+
+  function startFromPreset(preset: typeof PRESETS[number]) {
+    setEditing('new');
+    setForm({ name: preset.name, prefix: preset.prefix, target: preset.target, authType: preset.authType, headerName: preset.headerName, value: '' });
     setError('');
   }
 
@@ -229,9 +243,32 @@ function CredentialsTab() {
 
         {rules.length === 0 && !editing && (
           <div className="text-center py-8 text-slate-400">
-            No credential rules configured. Add one to securely inject API keys into agent requests.
+            No credential rules configured. Use a preset below or add a custom rule.
           </div>
         )}
+
+        {/* Presets — show available templates (hide already-configured ones) */}
+        {!editing && (() => {
+          const existingPrefixes = new Set(rules.map((r) => r.prefix));
+          const available = PRESETS.filter((p) => !existingPrefixes.has(p.prefix));
+          if (available.length === 0) return null;
+          return (
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <p className="text-xs font-medium text-slate-500 mb-2 uppercase tracking-wide">Quick Add</p>
+              <div className="flex flex-wrap gap-2">
+                {available.map((preset) => (
+                  <button
+                    key={preset.prefix}
+                    onClick={() => startFromPreset(preset)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-700 hover:bg-accent-50 hover:border-accent-200 hover:text-accent-700 transition-colors"
+                  >
+                    <Plus size={14} /> {preset.name} <span className="text-slate-400">— {preset.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {editing && (
