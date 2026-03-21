@@ -13,6 +13,7 @@ import {
   updateBot,
   deleteBot,
 } from '../../services/dynamo.js';
+import { botCache } from '../../services/cache.js';
 import type { Bot, CreateBotRequest, UpdateBotRequest } from '@clawbot/shared';
 
 const createBotSchema = z.object({
@@ -138,6 +139,7 @@ export const botsRoutes: FastifyPluginAsync = async (app) => {
       }
 
       await updateBot(request.userId, botId, updates);
+      botCache.delete(botId); // Invalidate so dispatcher picks up changes immediately
       const updated = await getBot(request.userId, botId);
       return updated;
     },
