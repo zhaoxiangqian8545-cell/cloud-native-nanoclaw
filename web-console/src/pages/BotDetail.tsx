@@ -12,33 +12,10 @@ import FileBrowser from '../components/FileBrowser';
 import {
   bots as botsApi, channels as channelsApi, groups as groupsApi,
   tasks as tasksApi, memory as memoryApi,
-  user as userApi, Bot, ChannelConfig, Group, ScheduledTask,
+  providers as providersApi,
+  Bot, ChannelConfig, Group, ScheduledTask,
+  type ProviderPublic,
 } from '../lib/api';
-
-/* ── Model presets ─────────────────────────────────────────────────── */
-
-const BEDROCK_MODEL_PRESETS = [
-  { label: 'Claude Haiku 4.5', value: 'global.anthropic.claude-haiku-4-5-20251001-v1:0' },
-  { label: 'Claude Sonnet 4.6', value: 'global.anthropic.claude-sonnet-4-6' },
-  { label: 'Claude Opus 4.6', value: 'global.anthropic.claude-opus-4-6-v1' },
-] as const;
-
-const API_MODEL_PRESETS = [
-  { label: 'Claude Haiku 4.5', value: 'claude-haiku-4-5-20251001' },
-  { label: 'Claude Sonnet 4.6', value: 'claude-sonnet-4-6' },
-  { label: 'Claude Opus 4.6', value: 'claude-opus-4-6' },
-] as const;
-
-const DEFAULT_MODEL = 'global.anthropic.claude-sonnet-4-6';
-
-function getModelSelection(
-  model: string | undefined,
-  presets: readonly { label: string; value: string }[],
-): string {
-  const m = model || '';
-  const preset = presets.find(p => p.value === m);
-  return preset ? m : (m ? 'custom' : presets[1].value);
-}
 
 /* ── Tab definitions ───────────────────────────────────────────────── */
 
@@ -56,8 +33,8 @@ const tabs = [
 
 function OverviewTab({
   bot, botId, editing, setEditing, editName, setEditName, editDesc, setEditDesc, saveBot,
-  provider, setProvider, providerHasKey, modelSelection, setModelSelection,
-  customModelId, setCustomModelId, saveModel, savingModel, modelStatus,
+  providersList, selectedProviderId, setSelectedProviderId,
+  selectedModelId, setSelectedModelId, saveModel, savingModel, modelStatus,
   channelCount, conversationCount, taskCount,
 }: {
   bot: Bot;
@@ -69,13 +46,11 @@ function OverviewTab({
   editDesc: string;
   setEditDesc: (v: string) => void;
   saveBot: () => void;
-  provider: 'bedrock' | 'anthropic-api';
-  setProvider: (v: 'bedrock' | 'anthropic-api') => void;
-  providerHasKey: boolean;
-  modelSelection: string;
-  setModelSelection: (v: string) => void;
-  customModelId: string;
-  setCustomModelId: (v: string) => void;
+  providersList: ProviderPublic[];
+  selectedProviderId: string;
+  setSelectedProviderId: (v: string) => void;
+  selectedModelId: string;
+  setSelectedModelId: (v: string) => void;
   saveModel: () => void;
   savingModel: boolean;
   modelStatus: 'saved' | 'error' | null;
@@ -83,7 +58,6 @@ function OverviewTab({
   conversationCount: number;
   taskCount: number;
 }) {
-  const activePresets = provider === 'anthropic-api' ? API_MODEL_PRESETS : BEDROCK_MODEL_PRESETS;
 
   return (
     <div className="space-y-6">
@@ -160,81 +134,61 @@ function OverviewTab({
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
         <h2 className="text-base font-semibold text-slate-900 mb-4">Model</h2>
 
-        {/* Provider selector */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Provider</label>
-          <select
-            value={provider}
-            onChange={(e) => {
-              const newProvider = e.target.value as 'bedrock' | 'anthropic-api';
-              setProvider(newProvider);
-              const presets = newProvider === 'anthropic-api' ? API_MODEL_PRESETS : BEDROCK_MODEL_PRESETS;
-              setModelSelection(presets[1].value);
-              setCustomModelId('');
-            }}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 focus:outline-none"
-          >
-            <option value="bedrock">Bedrock</option>
-            <option value="anthropic-api">Anthropic API</option>
-          </select>
-          {provider === 'anthropic-api' && !providerHasKey && (
-            <p className="text-xs text-red-500 mt-1">
-              No API key configured.{' '}
-              <Link to="/settings" className="text-accent-600 underline hover:text-accent-700">
-                Set up in Settings
-              </Link>
-            </p>
-          )}
-        </div>
-
-        {/* Model radio presets */}
-        <div className="space-y-3">
-          {activePresets.map((preset) => (
-            <label key={preset.value} className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="radio"
-                name="model"
-                value={preset.value}
-                checked={modelSelection === preset.value}
-                onChange={() => setModelSelection(preset.value)}
-                className="text-accent-500 focus:ring-accent-500"
-              />
-              <span className="text-sm text-slate-900">{preset.label}</span>
-              <span className="text-xs text-slate-400 font-mono">{preset.value}</span>
-            </label>
-          ))}
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input
-              type="radio"
-              name="model"
-              value="custom"
-              checked={modelSelection === 'custom'}
-              onChange={() => setModelSelection('custom')}
-              className="text-accent-500 focus:ring-accent-500"
-            />
-            <span className="text-sm text-slate-900">Custom</span>
-          </label>
-          {modelSelection === 'custom' && (
-            <input
-              type="text"
-              value={customModelId}
-              onChange={(e) => setCustomModelId(e.target.value)}
-              placeholder="Enter model ID..."
-              className="block w-full ml-7 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 focus:outline-none"
-            />
-          )}
-          <div className="flex items-center gap-3 pt-1">
-            <button
-              onClick={saveModel}
-              disabled={savingModel || (modelSelection === 'custom' && !customModelId.trim())}
-              className="rounded-lg bg-accent-500 text-white px-4 py-2 text-sm font-medium hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {savingModel ? 'Saving...' : 'Save Model'}
-            </button>
-            {modelStatus === 'saved' && <span className="text-sm text-emerald-600">Saved</span>}
-            {modelStatus === 'error' && <span className="text-sm text-red-600">Failed to save</span>}
+        {providersList.length === 0 ? (
+          <div className="text-sm text-slate-500 py-4">
+            No model providers available. Contact your administrator.
           </div>
-        </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Provider dropdown */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Provider</label>
+              <select
+                value={selectedProviderId}
+                onChange={(e) => {
+                  const newId = e.target.value;
+                  setSelectedProviderId(newId);
+                  const prov = providersList.find(p => p.providerId === newId);
+                  setSelectedModelId(prov?.modelIds[0] || '');
+                }}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 focus:outline-none"
+              >
+                {providersList.map(p => (
+                  <option key={p.providerId} value={p.providerId}>
+                    {p.providerName} ({p.providerType === 'bedrock' ? 'Bedrock' : 'Anthropic API'})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Model dropdown */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Model</label>
+              <select
+                value={selectedModelId}
+                onChange={(e) => setSelectedModelId(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 focus:outline-none"
+              >
+                {(providersList.find(p => p.providerId === selectedProviderId)?.modelIds || []).map(mid => (
+                  <option key={mid} value={mid}>{mid}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Save button */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={saveModel}
+                disabled={savingModel || !selectedProviderId || !selectedModelId}
+                className="rounded-lg bg-accent-500 text-white px-4 py-2 text-sm font-medium hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {savingModel ? 'Saving...' : 'Save Model'}
+              </button>
+              {modelStatus === 'saved' && <span className="text-sm text-emerald-600">Saved</span>}
+              {modelStatus === 'error' && <span className="text-sm text-red-600">Failed to save</span>}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Quick stats */}
@@ -759,24 +713,23 @@ export default function BotDetail() {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
-  const [modelSelection, setModelSelection] = useState<string>('');
-  const [customModelId, setCustomModelId] = useState('');
+  const [providersList, setProvidersList] = useState<ProviderPublic[]>([]);
+  const [selectedProviderId, setSelectedProviderId] = useState('');
+  const [selectedModelId, setSelectedModelId] = useState('');
   const [savingModel, setSavingModel] = useState(false);
   const [modelStatus, setModelStatus] = useState<'saved' | 'error' | null>(null);
-  const [provider, setProvider] = useState<'bedrock' | 'anthropic-api'>('bedrock');
-  const [providerHasKey, setProviderHasKey] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => { if (botId) loadData(); }, [botId]);
 
   async function loadData() {
     try {
-      const [botData, chs, grps, tks, providerConfig] = await Promise.all([
+      const [botData, chs, grps, tks, provs] = await Promise.all([
         botsApi.get(botId!),
         channelsApi.list(botId!),
         groupsApi.list(botId!),
         tasksApi.list(botId!),
-        userApi.getProvider(),
+        providersApi.list(),
       ]);
       setBot(botData);
       setChannels(chs);
@@ -784,14 +737,18 @@ export default function BotDetail() {
       setTasks(tks);
       setEditName(botData.name);
       setEditDesc(botData.description || '');
-      setProviderHasKey(providerConfig.hasApiKey);
-      const botProvider = botData.modelProvider || 'bedrock';
-      setProvider(botProvider);
-      const activePresets = botProvider === 'anthropic-api' ? API_MODEL_PRESETS : BEDROCK_MODEL_PRESETS;
-      setModelSelection(getModelSelection(botData.model, activePresets));
-      setCustomModelId(
-        activePresets.find(p => p.value === botData.model) ? '' : (botData.model || '')
-      );
+      setProvidersList(provs);
+
+      // Set selected provider/model from bot data
+      if (botData.providerId) {
+        setSelectedProviderId(botData.providerId);
+        setSelectedModelId(botData.modelId || '');
+      } else if (provs.length > 0) {
+        // No provider set yet — use default or first
+        const defaultProv = provs.find(p => p.isDefault) || provs[0];
+        setSelectedProviderId(defaultProv.providerId);
+        setSelectedModelId(defaultProv.modelIds[0] || '');
+      }
     } catch (err) {
       console.error('Failed to load bot:', err);
     } finally {
@@ -806,12 +763,11 @@ export default function BotDetail() {
   }
 
   async function saveModel() {
-    const model = modelSelection === 'custom' ? customModelId.trim() : modelSelection;
-    if (!model) return;
+    if (!selectedProviderId || !selectedModelId) return;
     setSavingModel(true);
     setModelStatus(null);
     try {
-      await botsApi.update(botId!, { model, modelProvider: provider });
+      await botsApi.update(botId!, { providerId: selectedProviderId, modelId: selectedModelId });
       setModelStatus('saved');
       setTimeout(() => setModelStatus(null), 2000);
       loadData();
@@ -853,13 +809,11 @@ export default function BotDetail() {
             editDesc={editDesc}
             setEditDesc={setEditDesc}
             saveBot={saveBot}
-            provider={provider}
-            setProvider={setProvider}
-            providerHasKey={providerHasKey}
-            modelSelection={modelSelection}
-            setModelSelection={setModelSelection}
-            customModelId={customModelId}
-            setCustomModelId={setCustomModelId}
+            providersList={providersList}
+            selectedProviderId={selectedProviderId}
+            setSelectedProviderId={setSelectedProviderId}
+            selectedModelId={selectedModelId}
+            setSelectedModelId={setSelectedModelId}
             saveModel={saveModel}
             savingModel={savingModel}
             modelStatus={modelStatus}
