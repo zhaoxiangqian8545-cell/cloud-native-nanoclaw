@@ -488,6 +488,7 @@ function FeishuGuide({ step }: { step: 'before' | 'after' }) {
       "im:chat.members:bot_access",
       "im:message",
       "im:message.group_at_msg:readonly",
+      "im:message.group_msg",
       "im:message.p2p_msg:readonly",
       "im:message:readonly",
       "im:message:send_as_bot",
@@ -504,7 +505,7 @@ function FeishuGuide({ step }: { step: 'before' | 'after' }) {
 }`}</pre>
                   <button
                     type="button"
-                    onClick={() => navigator.clipboard.writeText(JSON.stringify({"scopes":{"tenant":["aily:file:read","aily:file:write","application:application.app_message_stats.overview:readonly","application:application:self_manage","application:bot.menu:write","cardkit:card:read","cardkit:card:write","contact:user.employee_id:readonly","corehr:file:download","docs:doc","docs:doc:readonly","docx:document","docx:document:readonly","docx:document.block:convert","drive:drive","drive:drive:readonly","docs:permission.member:create","event:ip_list","im:chat.access_event.bot_p2p_chat:read","im:chat.members:bot_access","im:message","im:message.group_at_msg:readonly","im:message.p2p_msg:readonly","im:message:readonly","im:message:send_as_bot","im:resource","wiki:wiki","wiki:wiki:readonly"],"user":["aily:file:read","aily:file:write","im:chat.access_event.bot_p2p_chat:read"]}}, null, 2))}
+                    onClick={() => navigator.clipboard.writeText(JSON.stringify({"scopes":{"tenant":["aily:file:read","aily:file:write","application:application.app_message_stats.overview:readonly","application:application:self_manage","application:bot.menu:write","cardkit:card:read","cardkit:card:write","contact:user.employee_id:readonly","corehr:file:download","docs:doc","docs:doc:readonly","docx:document","docx:document:readonly","docx:document.block:convert","drive:drive","drive:drive:readonly","docs:permission.member:create","event:ip_list","im:chat.access_event.bot_p2p_chat:read","im:chat.members:bot_access","im:message","im:message.group_at_msg:readonly","im:message.group_msg","im:message.p2p_msg:readonly","im:message:readonly","im:message:send_as_bot","im:resource","wiki:wiki","wiki:wiki:readonly"],"user":["aily:file:read","aily:file:write","im:chat.access_event.bot_p2p_chat:read"]}}, null, 2))}
                     className="absolute top-2 right-2 inline-flex items-center gap-1 px-2 py-1 bg-accent-500 text-white rounded-lg text-xs hover:bg-accent-600 transition-colors"
                   >
                     <Clipboard size={12} />
@@ -519,6 +520,7 @@ function FeishuGuide({ step }: { step: 'before' | 'after' }) {
                 <li><code className="bg-slate-100 px-1 rounded text-slate-800">im:message:readonly</code> — 读取消息内容</li>
                 <li><code className="bg-slate-100 px-1 rounded text-slate-800">im:message.p2p_msg:readonly</code> — 读取私聊消息</li>
                 <li><code className="bg-slate-100 px-1 rounded text-slate-800">im:message.group_at_msg:readonly</code> — 读取群聊 @机器人 消息</li>
+                <li><code className="bg-slate-100 px-1 rounded text-slate-800">im:message.group_msg</code> — <span className="text-amber-600 font-medium">获取群聊中所有消息（敏感权限，需审批）</span></li>
                 <li><code className="bg-slate-100 px-1 rounded text-slate-800">im:resource</code> — 读取消息中的资源文件</li>
                 <li><code className="bg-slate-100 px-1 rounded text-slate-800">im:chat.members:bot_access</code> — 获取群成员信息</li>
                 <li><code className="bg-slate-100 px-1 rounded text-slate-800">im:chat.access_event.bot_p2p_chat:read</code> — 接收私聊事件</li>
