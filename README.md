@@ -5,7 +5,7 @@
   <img src="https://img.shields.io/badge/☁️-NanoClaw_on_Cloud-4A90D9?style=for-the-badge&labelColor=1a1a2e" alt="NanoClaw on Cloud" />
 </h1>
 
-<p><strong>Multi-tenant AI Assistant Platform on AWS</strong></p>
+<p><strong>Multi-tenant NanoClaw on AWS</strong></p>
 
 <p>
   <em>Create Bots · Connect Channels · Run Claude Agents in Isolated Cloud Environments</em>
