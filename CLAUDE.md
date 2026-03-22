@@ -132,7 +132,7 @@ CDK_STAGE=dev              # deployment stage (default: dev)
 AWS_REGION=us-west-2       # AWS region
 ```
 
-**What `deploy.sh` does (15 steps):**
+**What `deploy.sh` does (17 steps):**
 1. Pre-flight checks (aws, docker, node, jq)
 2. `npm install` + `npm run build --workspaces`
 3. ECR login
@@ -148,12 +148,14 @@ AWS_REGION=us-west-2       # AWS region
 13. Build web-console with Cognito + API env vars
 14. S3 sync frontend to website bucket
 15. CloudFront invalidation + smoke test
+16. Seed default admin account (idempotent — `ADMIN_EMAIL` / `ADMIN_PASSWORD` env vars)
+17. Write AgentCore runtime ARN to SSM Parameter Store (replaces `post-deploy.sh`)
 
 ```bash
 # Destroy everything (AgentCore runtime + CDK stacks + ECR repos)
 bash scripts/destroy.sh
 
-# Post-deploy: write runtime-discovered values to SSM
+# Post-deploy (now integrated as Step 17 — kept for standalone use)
 bash scripts/post-deploy.sh
 ```
 

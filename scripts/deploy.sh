@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # NanoClawBot Cloud — Full Deployment Orchestrator
-# Usage: CDK_STAGE=dev ./scripts/deploy.sh
+# Usage: ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=Pass123! ./scripts/deploy.sh
+# Required: ADMIN_EMAIL, ADMIN_PASSWORD  Optional: CDK_STAGE (default: dev), AWS_REGION (default: us-west-2)
 set -euo pipefail
 
 STAGE="${CDK_STAGE:-dev}"
@@ -43,10 +44,18 @@ require_cmd node
 require_cmd npx
 require_cmd jq
 
+if [ -z "${ADMIN_EMAIL:-}" ]; then
+  fail "ADMIN_EMAIL is required. Usage: ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=YourPass123 ./scripts/deploy.sh"
+fi
+if [ -z "${ADMIN_PASSWORD:-}" ]; then
+  fail "ADMIN_PASSWORD is required. Usage: ADMIN_EMAIL=you@example.com ADMIN_PASSWORD=YourPass123 ./scripts/deploy.sh"
+fi
+
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 log "  AWS Account: ${ACCOUNT_ID}"
 log "  Region:      ${REGION}"
 log "  Stage:       ${STAGE}"
+log "  Admin email: ${ADMIN_EMAIL}"
 
 # ── Step 2: Install & build ─────────────────────────────────────────────────
 
@@ -362,6 +371,99 @@ else
   log "  WARN: Health check returned HTTP ${HTTP_STATUS} (may need time for ECS deployment)"
 fi
 
+# ── Step 16: Seed default admin account ──────────────────────────────────────
+
+log "Step 16: Seed default admin account"
+USERS_TABLE="${PREFIX}-${STAGE}-users"
+
+# Check if admin already exists in Cognito
+EXISTING_ADMIN=$(aws cognito-idp admin-get-user \
+  --user-pool-id "$COGNITO_USER_POOL_ID" \
+  --username "$ADMIN_EMAIL" \
+  --region "$REGION" 2>/dev/null || echo "")
+
+if [ -n "$EXISTING_ADMIN" ]; then
+  log "  Admin user already exists: ${ADMIN_EMAIL} — skipping"
+else
+  log "  Creating admin user: ${ADMIN_EMAIL}"
+
+  # Create user in Cognito (suppress welcome email with MessageAction)
+  CREATE_ADMIN_RESULT=$(aws cognito-idp admin-create-user \
+    --user-pool-id "$COGNITO_USER_POOL_ID" \
+    --username "$ADMIN_EMAIL" \
+    --user-attributes Name=email,Value="$ADMIN_EMAIL" Name=email_verified,Value=true \
+    --message-action SUPPRESS \
+    --region "$REGION" 2>&1) || fail "Failed to create admin user: $CREATE_ADMIN_RESULT"
+
+  # Extract the Cognito sub (userId)
+  ADMIN_USER_ID=$(echo "$CREATE_ADMIN_RESULT" | jq -r '.User.Attributes[] | select(.Name=="sub") | .Value')
+  if [ -z "$ADMIN_USER_ID" ]; then
+    fail "Failed to extract user ID from Cognito response"
+  fi
+
+  # Set permanent password (skips FORCE_CHANGE_PASSWORD state)
+  aws cognito-idp admin-set-user-password \
+    --user-pool-id "$COGNITO_USER_POOL_ID" \
+    --username "$ADMIN_EMAIL" \
+    --password "$ADMIN_PASSWORD" \
+    --permanent \
+    --region "$REGION" || fail "Failed to set admin password"
+
+  # Create matching DynamoDB user record
+  NOW=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+  USAGE_MONTH=$(date -u +%Y-%m)
+  aws dynamodb put-item \
+    --table-name "$USERS_TABLE" \
+    --region "$REGION" \
+    --condition-expression "attribute_not_exists(userId)" \
+    --item "$(jq -n \
+      --arg uid "$ADMIN_USER_ID" \
+      --arg email "$ADMIN_EMAIL" \
+      --arg now "$NOW" \
+      --arg month "$USAGE_MONTH" \
+      '{
+        userId:           {S: $uid},
+        email:            {S: $email},
+        displayName:      {S: "admin"},
+        plan:             {S: "enterprise"},
+        status:           {S: "active"},
+        quota:            {M: {maxTokensPerMonth: {N: "999999999"}, maxBotsPerUser: {N: "100"}, maxInvocationsPerMonth: {N: "999999"}}},
+        usageMonth:       {S: $month},
+        usageTokens:      {N: "0"},
+        usageInvocations: {N: "0"},
+        activeAgents:     {N: "0"},
+        createdAt:        {S: $now},
+        lastLogin:        {S: $now}
+      }')" 2>/dev/null || log "  WARN: DynamoDB record may already exist"
+
+  log "  Admin user created: ${ADMIN_EMAIL} (userId: ${ADMIN_USER_ID})"
+fi
+
+# ── Step 17: Write runtime values to SSM (post-deploy) ──────────────────────
+
+log "Step 17: Write runtime values to SSM Parameter Store"
+SSM_PREFIX="/${PREFIX}/${STAGE}"
+
+aws ssm put-parameter \
+  --name "${SSM_PREFIX}/agentcore-runtime-arn" \
+  --value "$AGENTCORE_RUNTIME_ARN" \
+  --type String \
+  --description "AgentCore runtime ARN for ${STAGE} environment" \
+  --overwrite \
+  --region "$REGION" >/dev/null
+
+# Verify
+SSM_VERIFY=$(aws ssm get-parameter \
+  --name "${SSM_PREFIX}/agentcore-runtime-arn" \
+  --region "$REGION" \
+  --query 'Parameter.Value' --output text 2>/dev/null || echo "")
+
+if [ "$SSM_VERIFY" = "$AGENTCORE_RUNTIME_ARN" ]; then
+  log "  SSM ${SSM_PREFIX}/agentcore-runtime-arn verified"
+else
+  log "  WARN: SSM verification failed — expected ${AGENTCORE_RUNTIME_ARN}, got ${SSM_VERIFY}"
+fi
+
 # ── Done ─────────────────────────────────────────────────────────────────────
 
 log ""
@@ -371,3 +473,8 @@ log "  Console:      https://${CDN_DOMAIN}"
 log "  API:          https://${CDN_DOMAIN}/api"
 log "  Health:       https://${CDN_DOMAIN}/health"
 log "  AgentCore:    ${AGENTCORE_RUNTIME_ARN}"
+log ""
+log "  ┌─ Admin Credentials ────────────────────┐"
+log "  │  Email:    ${ADMIN_EMAIL}"
+log "  │  Password: ${ADMIN_PASSWORD}"
+log "  └─────────────────────────────────────────┘"

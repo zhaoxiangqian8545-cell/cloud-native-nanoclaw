@@ -868,7 +868,7 @@ const frontend = new FrontendStack(app, 'ClawBot-Frontend', {
 CDK_STAGE=prod AWS_REGION=us-east-1 ./scripts/deploy.sh
 ```
 
-`scripts/deploy.sh` 执行 15 步:
+`scripts/deploy.sh` 执行 17 步:
 
 ```
 Step 1:  预检 (aws sts, docker, node, jq)
@@ -886,10 +886,33 @@ Step 12: 注入 Cognito 配置, 构建 web-console
 Step 13: aws s3 sync web-console/dist/ → 前端 S3 Bucket
 Step 14: CloudFront 缓存失效
 Step 15: 冒烟测试 (curl /health)
+Step 16: 创建默认 Admin 账号 (幂等: 已存在则跳过)
+Step 17: 写入 AgentCore ARN 到 SSM Parameter Store (供 control-plane 运行时读取)
 ```
 
+**Step 16 详解 — 默认 Admin 账号:**
+
+由于 Cognito User Pool 禁用了自助注册 (`selfSignUpEnabled: false`)，部署脚本在最后一步自动创建默认管理员账号:
+
+1. 检查 Cognito 中是否已存在该用户 (幂等)
+2. `admin-create-user` 创建用户 (抑制欢迎邮件: `--message-action SUPPRESS`)
+3. `admin-set-user-password` 设置永久密码 (跳过 `FORCE_CHANGE_PASSWORD` 状态)
+4. DynamoDB `put-item` 创建对应用户记录 (enterprise plan, 无限配额)
+
+| 环境变量 | 必填 | 说明 |
+|----------|------|------|
+| `ADMIN_EMAIL` | **是** | 管理员邮箱 (用于登录) |
+| `ADMIN_PASSWORD` | **是** | 管理员密码 (需符合 Cognito 密码策略: 8+ 字符, 含大小写和数字) |
+
+```bash
+# ADMIN_EMAIL 和 ADMIN_PASSWORD 为必要参数，未设置时脚本会在 Step 1 终止
+ADMIN_EMAIL=admin@company.com ADMIN_PASSWORD=MySecureP@ss ./scripts/deploy.sh
+```
+
+> 部署完成后，脚本会打印完整的管理员凭证 (Email + Password)，请妥善保存。
+
 **关键设计:**
-- 幂等: AgentCore runtime 已存在时跳过创建
+- 幂等: AgentCore runtime 已存在时跳过创建; Admin 账号已存在时跳过创建
 - ECR 仓库不存在时自动 `create-repository`
 - 使用 `jq` 安全构建 JSON (避免 shell 变量注入)
 - Stack 输出通过 `--outputs-file cdk-outputs.json` 获取

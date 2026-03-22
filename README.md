@@ -151,7 +151,7 @@ graph TB
 | Agent SDK | Claude Agent SDK + Bedrock | Full tool access, IAM-native auth |
 | Message queue | SQS FIFO | Per-group ordering, cross-group parallelism |
 | Database | DynamoDB | Serverless, millisecond latency |
-| Auth | Cognito | Managed JWT, self-service signup |
+| Auth | Cognito | Managed JWT, admin-provisioned users |
 | IaC | CDK (TypeScript) | Type-safe, same language as app |
 
 ## NanoClaw → Cloud Mapping
@@ -180,13 +180,15 @@ graph TB
 
 ```bash
 # Full deployment (default stage: dev)
-./scripts/deploy.sh
+ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=SecurePass123! ./scripts/deploy.sh
 
 # Deploy to a specific stage
-CDK_STAGE=prod AWS_REGION=us-east-1 ./scripts/deploy.sh
+CDK_STAGE=prod AWS_REGION=us-east-1 ADMIN_EMAIL=admin@company.com ADMIN_PASSWORD=Pr0d!Pass ./scripts/deploy.sh
 ```
 
-The deploy script runs 15 steps in order:
+> `ADMIN_EMAIL` and `ADMIN_PASSWORD` are **required** — the script will abort if not set.
+
+The deploy script runs 17 steps in order:
 1. Pre-flight checks (aws, docker, node, jq)
 2. `npm install` + build all workspaces
 3. ECR login (creates repos if missing)
@@ -202,6 +204,10 @@ The deploy script runs 15 steps in order:
 13. Sync `web-console/dist/` to S3 frontend bucket
 14. CloudFront cache invalidation
 15. Smoke test (`/health` endpoint)
+16. Seed default admin account (idempotent — skips if already exists)
+17. Write AgentCore runtime ARN to SSM Parameter Store
+
+> **Admin account:** Since Cognito self-signup is disabled, Step 16 creates the initial admin user. `ADMIN_EMAIL` and `ADMIN_PASSWORD` are required env vars — the script will not start without them.
 
 ### Teardown
 
@@ -230,7 +236,7 @@ npm run dev            # opens http://localhost:5173
 ```
 cloud_native_nanoclaw/
 ├── scripts/
-│   ├── deploy.sh             # One-command full deployment (15 steps)
+│   ├── deploy.sh             # One-command full deployment (17 steps)
 │   └── destroy.sh            # Reverse teardown
 ├── shared/src/
 │   ├── types.ts              # User, Bot, Channel, Message, Task, Session...
