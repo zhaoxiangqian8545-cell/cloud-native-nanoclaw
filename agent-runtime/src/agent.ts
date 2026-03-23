@@ -394,6 +394,11 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
           },
         },
         hooks: {
+          ...(payload.toolWhitelist?.enabled && {
+            PreToolUse: [{
+              hooks: [createToolWhitelistHook(payload, logger)],
+            }],
+          }),
           PreCompact: [{ hooks: [createPreCompactHook(params.botName)] }],
         },
       },
@@ -504,6 +509,68 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
 // ---------------------------------------------------------------------------
 // Session detection
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Tool whitelist hook — deny tools/skills not in the bot's whitelist
+// ---------------------------------------------------------------------------
+
+function createToolWhitelistHook(
+  payload: InvocationPayload,
+  logger: pino.Logger,
+): HookCallback {
+  return async (input, _toolUseId, _context) => {
+    const hookInput = input as { tool_name?: string; tool_input?: Record<string, unknown> };
+    const toolName = hookInput.tool_name || '';
+    const toolInput = hookInput.tool_input || {};
+    const whitelist = payload.toolWhitelist!;
+
+    // Check Skill tool — inspect the skill name inside tool_input
+    if (toolName === 'Skill') {
+      const requestedSkill = (toolInput.skill as string) || '';
+      if (!whitelist.allowedSkills.includes(requestedSkill)) {
+        logger.warn({
+          event: 'tool_access_denied',
+          botId: payload.botId,
+          userId: payload.userId,
+          toolType: 'skill',
+          requestedTool: requestedSkill,
+          allowedTools: whitelist.allowedSkills,
+        }, `Skill access denied: ${requestedSkill}`);
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'deny',
+            permissionDecisionReason: `Skill "${requestedSkill}" is not allowed for this bot. Allowed: ${whitelist.allowedSkills.join(', ') || 'none'}`,
+          },
+        };
+      }
+    }
+
+    // Check MCP tools — format is "mcp__nanoclawbot__<toolName>"
+    if (toolName.startsWith('mcp__nanoclawbot__')) {
+      const mcpToolName = toolName.replace('mcp__nanoclawbot__', '');
+      if (!whitelist.allowedMcpTools.includes(mcpToolName)) {
+        logger.warn({
+          event: 'tool_access_denied',
+          botId: payload.botId,
+          userId: payload.userId,
+          toolType: 'mcp_tool',
+          requestedTool: mcpToolName,
+          allowedTools: whitelist.allowedMcpTools,
+        }, `MCP tool access denied: ${mcpToolName}`);
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'deny',
+            permissionDecisionReason: `Tool "${mcpToolName}" is not allowed for this bot. Allowed: ${whitelist.allowedMcpTools.join(', ') || 'none'}`,
+          },
+        };
+      }
+    }
+
+    return {};
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Pre-compact hook — archive transcripts before compaction
