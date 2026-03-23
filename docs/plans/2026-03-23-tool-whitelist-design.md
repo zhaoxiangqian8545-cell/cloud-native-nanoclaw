@@ -191,7 +191,7 @@ Denied tool uses are logged as structured Pino entries in agent-runtime:
 ```typescript
 logger.warn({
   event: 'tool_access_denied',
-  botId, userId, sessionId,
+  botId, userId, groupJid,
   toolType: 'skill' | 'mcp_tool',
   requestedTool: '<tool-name>',
   allowedTools: [...],

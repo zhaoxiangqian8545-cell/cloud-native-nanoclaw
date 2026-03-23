@@ -687,8 +687,8 @@ function ToolsTab({
     try {
       const toolWhitelist: ToolWhitelistConfig = {
         enabled,
-        allowedMcpTools: enabled ? allowedMcpTools : [],
-        allowedSkills: enabled ? allowedSkills : [],
+        allowedMcpTools,
+        allowedSkills,
       };
       await botsApi.update(botId, { toolWhitelist } as Partial<Bot>);
       setStatus('saved');

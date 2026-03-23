@@ -532,6 +532,7 @@ function createToolWhitelistHook(
           event: 'tool_access_denied',
           botId: payload.botId,
           userId: payload.userId,
+          groupJid: payload.groupJid,
           toolType: 'skill',
           requestedTool: requestedSkill,
           allowedTools: whitelist.allowedSkills,
@@ -548,12 +549,13 @@ function createToolWhitelistHook(
 
     // Check MCP tools — format is "mcp__nanoclawbot__<toolName>"
     if (toolName.startsWith('mcp__nanoclawbot__')) {
-      const mcpToolName = toolName.replace('mcp__nanoclawbot__', '');
+      const mcpToolName = toolName.slice('mcp__nanoclawbot__'.length);
       if (!whitelist.allowedMcpTools.includes(mcpToolName)) {
         logger.warn({
           event: 'tool_access_denied',
           botId: payload.botId,
           userId: payload.userId,
+          groupJid: payload.groupJid,
           toolType: 'mcp_tool',
           requestedTool: mcpToolName,
           allowedTools: whitelist.allowedMcpTools,
