@@ -5,7 +5,7 @@
 
 import * as lark from '@larksuiteoapi/node-sdk';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import {
   SecretsManagerClient,
   GetSecretValueCommand,
@@ -13,6 +13,7 @@ import {
 import type pino from 'pino';
 import type { ChannelConfig } from '@clawbot/shared';
 import { config } from '../config.js';
+import { getChannelsByType } from '../services/dynamo.js';
 import { handleFeishuMessage } from './message-handler.js';
 import type { FeishuImMessageEvent } from './message-handler.js';
 import type { FeishuDomain } from '../channels/feishu.js';
@@ -200,15 +201,9 @@ export class FeishuGatewayManager {
     );
   }
 
+  // PERF-C2: Use GSI query instead of full table scan
   private async discoverFeishuChannels(): Promise<ChannelConfig[]> {
-    const result = await ddb.send(
-      new ScanCommand({
-        TableName: config.tables.channels,
-        FilterExpression: 'channelType = :ct',
-        ExpressionAttributeValues: { ':ct': 'feishu' },
-      }),
-    );
-    return (result.Items || []) as ChannelConfig[];
+    return getChannelsByType('feishu');
   }
 
   private async loadCredentials(

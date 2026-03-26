@@ -385,6 +385,15 @@ export async function createBot(bot: Bot): Promise<void> {
       ConditionExpression: 'attribute_not_exists(userId) AND attribute_not_exists(botId)',
     }),
   );
+  // PERF-C1: Atomically increment denormalized botCount on the user record
+  await client.send(
+    new UpdateCommand({
+      TableName: config.tables.users,
+      Key: { userId: bot.userId },
+      UpdateExpression: 'ADD botCount :inc',
+      ExpressionAttributeValues: { ':inc': 1 },
+    }),
+  );
 }
 
 export async function getBot(
@@ -500,6 +509,15 @@ export async function deleteBot(
       },
     }),
   );
+  // PERF-C1: Atomically decrement denormalized botCount on the user record
+  await client.send(
+    new UpdateCommand({
+      TableName: config.tables.users,
+      Key: { userId },
+      UpdateExpression: 'ADD botCount :dec',
+      ExpressionAttributeValues: { ':dec': -1 },
+    }),
+  );
 }
 
 // ── Channel operations ──────────────────────────────────────────────────────
@@ -541,6 +559,30 @@ export async function getChannelsByBot(
     }),
   );
   return (result.Items as ChannelConfig[]) ?? [];
+}
+
+// PERF-C2: Query channels by type using GSI (replaces full table scans in gateway managers)
+export async function getChannelsByType(
+  channelType: string,
+): Promise<ChannelConfig[]> {
+  const channels: ChannelConfig[] = [];
+  let lastKey: Record<string, unknown> | undefined;
+
+  do {
+    const result = await client.send(
+      new QueryCommand({
+        TableName: config.tables.channels,
+        IndexName: 'channelType-index',
+        KeyConditionExpression: 'channelType = :ct',
+        ExpressionAttributeValues: { ':ct': channelType },
+        ExclusiveStartKey: lastKey,
+      }),
+    );
+    channels.push(...(result.Items as ChannelConfig[]) ?? []);
+    lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+
+  return channels;
 }
 
 export async function deleteChannel(
