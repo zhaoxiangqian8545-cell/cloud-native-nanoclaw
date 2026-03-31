@@ -283,7 +283,7 @@ export class ControlPlaneStack extends cdk.Stack {
     this.service = new ecs.FargateService(this, 'Service', {
       cluster: this.cluster,
       taskDefinition: taskDef,
-      desiredCount: 2,
+      desiredCount: 1,
       assignPublicIp: false,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       securityGroups: [fargateSg],
@@ -291,7 +291,7 @@ export class ControlPlaneStack extends cdk.Stack {
 
     // ── ECS Auto-Scaling ───────────────────────────────────────────────
     const scaling = this.service.autoScaleTaskCount({
-      minCapacity: 2,
+      minCapacity: 1,
       maxCapacity: 10,
     });
 
