@@ -384,6 +384,10 @@
       "afterStep4title": "测试",
       "afterStep4desc": "在群聊中 @Bot 发送消息，或直接私聊 Bot",
       "fillCredentials": "请填入 ClientId 和 ClientSecret："
+    },
+    "web": {
+      "label": "网页聊天",
+      "desc": "嵌入式组件"
     }
   },
   "webchat": {

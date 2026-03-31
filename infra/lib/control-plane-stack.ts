@@ -75,6 +75,7 @@ export class ControlPlaneStack extends cdk.Stack {
     });
     this.originVerifySecret = originSecret.secretValue.unsafeUnwrap();
 
+
     // ── Security Groups ─────────────────────────────────────────────────
     const albSg = new ec2.SecurityGroup(this, 'AlbSg', {
       vpc,
@@ -156,6 +157,7 @@ export class ControlPlaneStack extends cdk.Stack {
         WEBHOOK_BASE_URL_SSM: `/nanoclawbot/${stage}/webhook-base-url`,
         AGENTCORE_RUNTIME_ARN_SSM: `/nanoclawbot/${stage}/agentcore-runtime-arn`,
         ORIGIN_VERIFY_SECRET: this.originVerifySecret,
+        INTEGRATION_SECRET: '9Kap2sQ7@xR3zL8mN5bT1wE6yA4cF0gH',
       },
       logging: ecs.LogDrivers.awsLogs({
         logGroup,
@@ -386,5 +388,6 @@ export class ControlPlaneStack extends cdk.Stack {
       value: this.alb.loadBalancerDnsName,
       exportName: `nanoclawbot-${stage}-alb-dns`,
     });
+
   }
 }

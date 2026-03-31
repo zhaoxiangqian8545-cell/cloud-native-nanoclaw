@@ -3,12 +3,12 @@ import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useTranslation, Trans } from 'react-i18next';
 import {
   ArrowLeft, Send, Hash, MessageSquare, Bird,
-  CheckCircle2, Clipboard,
+  CheckCircle2, Clipboard, Globe,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { channels as channelsApi } from '../lib/api';
 
-type ChannelType = 'telegram' | 'discord' | 'slack' | 'feishu' | 'dingtalk';
+type ChannelType = 'telegram' | 'discord' | 'slack' | 'feishu' | 'dingtalk' | 'web';
 
 interface FieldDef {
   name: string;
@@ -40,6 +40,7 @@ function useChannelFields(): Record<ChannelType, FieldDef[]> {
       { name: 'clientId', label: t('channelSetup.fields.clientId'), placeholder: 'dingxxxxxxxxxx' },
       { name: 'clientSecret', label: t('channelSetup.fields.clientSecret'), placeholder: 'xxxxxxxxxxxxxxxx', type: 'password' },
     ],
+    web: [],
   };
 }
 
@@ -51,6 +52,7 @@ function useChannelMeta(): Record<ChannelType, { icon: React.ReactNode; label: s
     slack: { icon: <MessageSquare size={20} />, label: t('channelSetup.slack.label'), desc: t('channelSetup.slack.desc') },
     feishu: { icon: <Bird size={20} />, label: t('channelSetup.feishu.label'), desc: t('channelSetup.feishu.desc') },
     dingtalk: { icon: <MessageSquare size={20} />, label: t('channelSetup.dingtalk.label'), desc: t('channelSetup.dingtalk.desc') },
+    web: { icon: <Globe size={20} />, label: t('channelSetup.web.label'), desc: t('channelSetup.web.desc') },
   };
 }
 
@@ -848,8 +850,8 @@ export default function ChannelSetup() {
     try {
       await channelsApi.create(botId!, { channelType, credentials });
       setConnected(true);
-      // For Telegram, auto-redirect (webhook is auto-registered)
-      if (channelType === 'telegram') {
+      // For Telegram and Web, auto-redirect (auto-connected, no further setup)
+      if (channelType === 'telegram' || channelType === 'web') {
         navigate(`/bots/${botId}`);
       }
       // For Slack/Discord, show post-connect instructions
@@ -955,7 +957,7 @@ export default function ChannelSetup() {
         <div className="bg-white border border-slate-200 p-6 rounded-xl">
           <label className="block text-sm font-medium text-slate-700 mb-3">{t('channelSetup.channelType')}</label>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {(['telegram', 'discord', 'slack', 'feishu', 'dingtalk'] as ChannelType[]).map((type) => {
+            {(['telegram', 'discord', 'slack', 'feishu', 'dingtalk', 'web'] as ChannelType[]).map((type) => {
               const meta = channelMeta[type];
               const selected = channelType === type;
               return (

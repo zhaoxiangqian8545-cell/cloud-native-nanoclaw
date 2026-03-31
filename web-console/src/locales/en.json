@@ -384,6 +384,10 @@
       "afterStep4title": "Test",
       "afterStep4desc": "Send a message mentioning @Bot in a group, or DM the bot directly",
       "fillCredentials": "Enter your ClientId and ClientSecret below:"
+    },
+    "web": {
+      "label": "Web Chat",
+      "desc": "Embedded widget"
     }
   },
   "webchat": {
