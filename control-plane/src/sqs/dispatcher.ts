@@ -316,7 +316,18 @@ async function dispatchMessage(
     const groupContext = await buildGroupChatContext(
       payload.botId, payload.groupJid, !!group?.isGroup, payload.messageId, logger,
     );
-    const prompt = groupContext + payload.content;
+    let prompt = groupContext + payload.content;
+
+    // Webchat messages are enqueued directly without going through a channel-specific
+    // message handler, so attachment file descriptions are never prepended to the content.
+    // Do it here so the agent knows which files have been downloaded to
+    // /workspace/group/attachments/ and can read them.
+    if (payload.attachments && payload.attachments.length > 0) {
+      const fileDescs = payload.attachments
+        .map((a) => `- ${a.fileName || a.s3Key.split('/').pop()} (${a.mimeType})`)
+        .join('\n');
+      prompt += `\n[Attached files — saved to /workspace/group/attachments/]\n${fileDescs}`;
+    }
 
     // 6. Build feishu config (if channel is feishu, includes credential ARN + tool config)
     const feishuConfig = await buildFeishuConfig(payload.botId, payload.channelType, logger);
