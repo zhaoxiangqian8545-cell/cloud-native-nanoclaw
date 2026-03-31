@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import type { RawData } from 'ws';
 import { config } from '../../config.js';
 import {
@@ -22,6 +23,7 @@ import type { Attachment, Message, SqsInboundPayload } from '@clawbot/shared';
 import { storeFromBuffer } from '../../services/attachments.js';
 
 const sqs = new SQSClient({ region: config.region });
+const s3 = new S3Client({ region: config.region });
 
 const attachmentSchema = z.object({
   type: z.enum(['image', 'audio', 'document', 'video']),
@@ -189,6 +191,40 @@ export const webchatRoutes: FastifyPluginAsync = async (app) => {
       }
 
       return { attachment: att };
+    },
+  );
+
+  // Stream a webchat attachment from S3 (binary-safe, integration-auth).
+  // The s3Key is stored as-is — no prefix is prepended, unlike /bots/:botId/files/content.
+  app.get<{ Params: { botId: string }; Querystring: { key: string } }>(
+    '/attachment',
+    async (request, reply) => {
+      const { botId } = request.params;
+      const s3Key = request.query.key;
+      if (!s3Key) return reply.status(400).send({ error: 'key query param required' });
+
+      // Sanity-check: key must belong to this bot
+      if (!s3Key.includes(`/${botId}/`)) {
+        return reply.status(403).send({ error: 'Forbidden' });
+      }
+
+      try {
+        const result = await s3.send(
+          new GetObjectCommand({ Bucket: config.s3Bucket, Key: s3Key }),
+        );
+        const bytes = await result.Body?.transformToByteArray();
+        if (!bytes) return reply.status(404).send({ error: 'Empty file' });
+
+        reply.header('Content-Type', result.ContentType || 'application/octet-stream');
+        if (result.ContentLength) reply.header('Content-Length', String(result.ContentLength));
+        reply.header('Cache-Control', 'private, max-age=3600');
+        return reply.send(Buffer.from(bytes));
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'NoSuchKey') {
+          return reply.status(404).send({ error: 'File not found' });
+        }
+        throw err;
+      }
     },
   );
 
