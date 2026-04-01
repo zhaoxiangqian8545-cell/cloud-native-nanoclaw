@@ -309,6 +309,7 @@ async function _handleInvocation(
 
 interface SuggestionsOpts {
   text: string;
+  model: string;
   anthropicApiKey?: string;
   anthropicBaseUrl?: string;
   botId: string;
@@ -323,6 +324,7 @@ interface SuggestionsOpts {
 /** Call LLM and return raw response text. Supports both Bedrock and Anthropic API. */
 async function callLlmForSuggestions(
   prompt: string,
+  model: string,
   anthropicApiKey: string | undefined,
   anthropicBaseUrl: string | undefined,
   logger: pino.Logger,
@@ -338,7 +340,7 @@ async function callLlmForSuggestions(
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model,
         max_tokens: 200,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -361,7 +363,7 @@ async function callLlmForSuggestions(
     messages: [{ role: 'user', content: prompt }],
   });
   const cmd = new InvokeModelCommand({
-    modelId: 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+    modelId: model,
     body: Buffer.from(bedrockBody),
     contentType: 'application/json',
     accept: 'application/json',
@@ -381,6 +383,7 @@ async function generateSuggestions(opts: SuggestionsOpts): Promise<void> {
   try {
     const raw = await callLlmForSuggestions(
       prompt,
+      opts.model,
       opts.anthropicApiKey,
       opts.anthropicBaseUrl,
       opts.logger,
@@ -461,7 +464,9 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
 
   const sendChunk = async (text: string, done: boolean) => {
     if (!sqsStream) return;
-    if (text) lastStreamedText += text;
+    // Replace (not append) — each chunk carries full accumulated text, so lastStreamedText
+    // always reflects the complete response seen so far.
+    if (text) lastStreamedText = text;
     try {
       await sqsStream.send(new SendMessageCommand({
         QueueUrl: replyQueueUrl,
@@ -592,12 +597,9 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
         }
 
         case 'stream_event': {
-          // Token-level streaming delta — forward to webchat WebSocket immediately
-          const ev = (message as { event?: { type?: string; delta?: { type?: string; text?: string } } }).event;
-          if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text) {
-            await sendChunk(ev.delta.text, false);
-            lastStreamedLength += ev.delta.text.length;
-          }
+          // Not used for sending — fine-grained token deltas sent via SQS standard queue
+          // arrive out of order and corrupt the display. Streaming is handled by the
+          // assistant case which sends full accumulated text instead.
           break;
         }
 
@@ -611,13 +613,14 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
           const content = msg?.content as Array<{ type: string; name?: string; id?: string; text?: string }> | undefined;
           const toolUses = content?.filter((b) => b.type === 'tool_use').map((b) => b.name) || [];
           const fullTextBlocks = content?.filter((b) => b.type === 'text').map((b) => b.text || '') || [];
-          // Assistant-case fallback: if stream_event didn't cover this text yet, send the delta.
-          // With includePartialMessages:true we get intermediate assistant messages as content grows,
-          // so this provides progressive streaming even when stream_event isn't emitted.
+          // Send full accumulated text (not just the delta) on each intermediate assistant message.
+          // With includePartialMessages:true the SDK fires this as content grows.
+          // Sending full text means each SQS message is self-contained: out-of-order delivery
+          // only shows an older snapshot, never garbled/interleaved characters.
+          // lastStreamedLength guards against re-sending when text hasn't changed.
           const fullText = fullTextBlocks.join('');
           if (sqsStream && fullText.length > lastStreamedLength) {
-            const delta = fullText.slice(lastStreamedLength);
-            await sendChunk(delta, false);
+            await sendChunk(fullText, false);
             lastStreamedLength = fullText.length;
           }
           logger.info(
@@ -675,6 +678,7 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
             suggestionsSent = true;
             void generateSuggestions({
               text: lastStreamedText,
+              model: payload.model || DEFAULT_MODEL,
               anthropicApiKey: payload.anthropicApiKey,
               anthropicBaseUrl: payload.anthropicBaseUrl,
               botId: payload.botId,
