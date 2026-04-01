@@ -364,7 +364,18 @@ export interface SqsStreamChunkPayload {
   replyContext?: SqsReplyContext;
 }
 
-export type SqsReplyPayload = SqsTextReplyPayload | SqsFileReplyPayload | SqsStreamChunkPayload;
+export interface SqsSuggestionsPayload {
+  type: 'suggestions';
+  botId: string;
+  groupJid: string;
+  channelType: ChannelType;
+  /** messageId of the streaming bubble these suggestions belong to */
+  messageId: string;
+  suggestions: string[];
+  replyContext?: SqsReplyContext;
+}
+
+export type SqsReplyPayload = SqsTextReplyPayload | SqsFileReplyPayload | SqsStreamChunkPayload | SqsSuggestionsPayload;
 
 // --- API Request/Response Types ---
 

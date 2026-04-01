@@ -13,7 +13,8 @@ type WebEvent =
   | { type: 'history'; messages: Message[] }
   | { type: 'message'; message: Message }
   | { type: 'error'; error: string }
-  | { type: 'chunk'; messageId: string; text: string; done: boolean };
+  | { type: 'chunk'; messageId: string; text: string; done: boolean }
+  | { type: 'suggestions'; messageId: string; suggestions: string[] };
 
 interface WebSession {
   sessionId: string;

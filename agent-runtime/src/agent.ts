@@ -26,12 +26,13 @@ import { query, type HookCallback, type PreCompactHookInput } from '@anthropic-a
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import type { S3Client } from '@aws-sdk/client-s3';
 import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
+import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 import {
   SecretsManagerClient,
   GetSecretValueCommand,
 } from '@aws-sdk/client-secrets-manager';
 import type pino from 'pino';
-import type { InvocationPayload, InvocationResult, Attachment } from '@clawbot/shared';
+import type { InvocationPayload, InvocationResult, Attachment, ChannelType, SqsReplyContext } from '@clawbot/shared';
 import { syncFromS3, syncToS3, clearSessionDirectory, syncMemoryOnlyFromS3, downloadSkills, type SyncPaths } from './session.js';
 import { buildAppendContent } from './system-prompt.js';
 import { getScopedClients } from './scoped-credentials.js';
@@ -303,6 +304,119 @@ async function _handleInvocation(
 }
 
 // ---------------------------------------------------------------------------
+// Follow-up suggestion generation
+// ---------------------------------------------------------------------------
+
+interface SuggestionsOpts {
+  text: string;
+  anthropicApiKey?: string;
+  anthropicBaseUrl?: string;
+  botId: string;
+  groupJid: string;
+  channelType: ChannelType;
+  messageId: string;
+  replyQueueUrl: string;
+  replyContext?: SqsReplyContext;
+  logger: pino.Logger;
+}
+
+/** Call LLM and return raw response text. Supports both Bedrock and Anthropic API. */
+async function callLlmForSuggestions(
+  prompt: string,
+  anthropicApiKey: string | undefined,
+  anthropicBaseUrl: string | undefined,
+  logger: pino.Logger,
+): Promise<string> {
+  // ── Anthropic API (direct) ─────────────────────────────────────
+  if (anthropicApiKey) {
+    const baseUrl = (anthropicBaseUrl ?? 'https://api.anthropic.com').replace(/\/$/, '');
+    const resp = await fetch(`${baseUrl}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': anthropicApiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 200,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) {
+      logger.warn({ status: resp.status }, 'Suggestions: Anthropic API non-OK');
+      return '';
+    }
+    const data = await resp.json() as { content?: Array<{ text?: string }> };
+    return (data.content?.[0]?.text ?? '').trim();
+  }
+
+  // ── AWS Bedrock (default for this deployment) ──────────────────
+  const region = process.env.AWS_REGION || 'us-east-1';
+  const bedrock = new BedrockRuntimeClient({ region });
+  const bedrockBody = JSON.stringify({
+    anthropic_version: 'bedrock-2023-05-31',
+    max_tokens: 200,
+    messages: [{ role: 'user', content: prompt }],
+  });
+  const cmd = new InvokeModelCommand({
+    modelId: 'us.anthropic.claude-haiku-4-5-20251001-v1:0',
+    body: Buffer.from(bedrockBody),
+    contentType: 'application/json',
+    accept: 'application/json',
+  });
+  const bedrockResp = await bedrock.send(cmd);
+  const bedrockData = JSON.parse(Buffer.from(bedrockResp.body).toString()) as { content?: Array<{ text?: string }> };
+  return (bedrockData.content?.[0]?.text ?? '').trim();
+}
+
+async function generateSuggestions(opts: SuggestionsOpts): Promise<void> {
+  const prompt =
+    '根据下面这段 AI 助手的回复，生成 3 条用户最可能接着提问的追问。' +
+    '直接返回 JSON 数组，不要任何说明，格式：["问题1","问题2","问题3"]。' +
+    '语言与回复保持一致。\n\nAI 回复：\n' +
+    opts.text.slice(0, 1500);
+
+  try {
+    const raw = await callLlmForSuggestions(
+      prompt,
+      opts.anthropicApiKey,
+      opts.anthropicBaseUrl,
+      opts.logger,
+    );
+    if (!raw) return;
+
+    const start = raw.indexOf('[');
+    const end = raw.lastIndexOf(']');
+    if (start < 0 || end <= start) return;
+
+    const parsed: unknown[] = JSON.parse(raw.slice(start, end + 1));
+    const suggestions = parsed
+      .filter((s): s is string => typeof s === 'string' && s.length > 0)
+      .slice(0, 3);
+    if (!suggestions.length) return;
+
+    const sqs = new SQSClient({});
+    await sqs.send(new SendMessageCommand({
+      QueueUrl: opts.replyQueueUrl,
+      MessageBody: JSON.stringify({
+        type: 'suggestions',
+        botId: opts.botId,
+        groupJid: opts.groupJid,
+        channelType: opts.channelType,
+        messageId: opts.messageId,
+        suggestions,
+        replyContext: opts.replyContext,
+      }),
+    }));
+    opts.logger.info({ count: suggestions.length }, 'Follow-up suggestions sent');
+  } catch (err) {
+    opts.logger.warn({ err }, 'Failed to generate suggestions (non-fatal)');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Agent query execution
 // ---------------------------------------------------------------------------
 
@@ -340,9 +454,14 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
   // Tracks total characters streamed so far — shared between stream_event and assistant fallback
   // so they never double-send: whichever fires first owns the bytes it sends.
   let lastStreamedLength = 0;
+  // Accumulates the full streamed text for follow-up suggestion generation.
+  let lastStreamedText = '';
+  // Guard: only send suggestions once even if SDK emits multiple result messages.
+  let suggestionsSent = false;
 
   const sendChunk = async (text: string, done: boolean) => {
     if (!sqsStream) return;
+    if (text) lastStreamedText += text;
     try {
       await sqsStream.send(new SendMessageCommand({
         QueueUrl: replyQueueUrl,
@@ -550,6 +669,23 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
           );
           // Signal streaming is complete
           await sendChunk('', true);
+
+          // Generate follow-up suggestions for webchat (fire-and-forget, never blocks the agent)
+          if (!suggestionsSent && webSessionId && replyQueueUrl && lastStreamedText.trim()) {
+            suggestionsSent = true;
+            void generateSuggestions({
+              text: lastStreamedText,
+              anthropicApiKey: payload.anthropicApiKey,
+              anthropicBaseUrl: payload.anthropicBaseUrl,
+              botId: payload.botId,
+              groupJid: payload.groupJid,
+              channelType: payload.channelType,
+              messageId: streamMessageId,
+              replyQueueUrl,
+              replyContext: payload.replyContext,
+              logger,
+            });
+          }
           break;
         }
 

@@ -75,6 +75,23 @@ async function replyLoop(logger: Logger): Promise<void> {
             continue;
           }
 
+          // Follow-up suggestions — push directly to webchat WebSocket
+          if (payload.type === 'suggestions') {
+            const webSessionId = payload.replyContext?.webSessionId;
+            if (webSessionId) {
+              sendSessionEvent(webSessionId, {
+                type: 'suggestions',
+                messageId: payload.messageId,
+                suggestions: payload.suggestions,
+              });
+            }
+            await sqs.send(new DeleteMessageCommand({
+              QueueUrl: config.queues.replies,
+              ReceiptHandle: msg.ReceiptHandle!,
+            }));
+            continue;
+          }
+
           // Route reply through adapter registry
           const registry = getRegistry();
           const adapter = registry.get(payload.channelType);
