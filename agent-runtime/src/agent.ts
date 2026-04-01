@@ -25,6 +25,7 @@ import { fileURLToPath } from 'url';
 import { query, type HookCallback, type PreCompactHookInput } from '@anthropic-ai/claude-agent-sdk';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import type { S3Client } from '@aws-sdk/client-s3';
+import { SQSClient, SendMessageCommand } from '@aws-sdk/client-sqs';
 import {
   SecretsManagerClient,
   GetSecretValueCommand,
@@ -329,6 +330,33 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
   let resultCount = 0;
   let tokensUsed = 0;
 
+  // Streaming setup — only for web channel with an active session
+  const webSessionId = payload.replyContext?.webSessionId;
+  const replyQueueUrl = process.env.SQS_REPLIES_URL || '';
+  const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const sqsStream = webSessionId && replyQueueUrl ? new SQSClient({}) : null;
+
+  const sendChunk = async (text: string, done: boolean) => {
+    if (!sqsStream) return;
+    try {
+      await sqsStream.send(new SendMessageCommand({
+        QueueUrl: replyQueueUrl,
+        MessageBody: JSON.stringify({
+          type: 'stream_chunk',
+          botId: payload.botId,
+          groupJid: payload.groupJid,
+          channelType: payload.channelType,
+          messageId: streamMessageId,
+          text,
+          done,
+          replyContext: payload.replyContext,
+        }),
+      }));
+    } catch (err) {
+      logger.warn({ err }, 'Failed to send stream chunk');
+    }
+  };
+
   // Discover additional directories mounted at /workspace/extra/*
   // (same pattern as NanoClaw for plugin directories)
   const extraDirs: string[] = [];
@@ -447,7 +475,7 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
           // Extract tool_use blocks from assistant content
           const content = msg?.content as Array<{ type: string; name?: string; id?: string; text?: string }> | undefined;
           const toolUses = content?.filter((b) => b.type === 'tool_use').map((b) => b.name) || [];
-          const textBlocks = content?.filter((b) => b.type === 'text').map((b) => (b.text || '').slice(0, 200)) || [];
+          const fullTextBlocks = content?.filter((b) => b.type === 'text').map((b) => b.text || '') || [];
           logger.info(
             {
               model: msg?.model,
@@ -456,10 +484,14 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
               cacheCreation: usage?.cache_creation_input_tokens,
               cacheRead: usage?.cache_read_input_tokens,
               toolUses: toolUses.length > 0 ? toolUses : undefined,
-              textPreview: textBlocks.length > 0 ? textBlocks[0].slice(0, 150) : undefined,
+              textPreview: fullTextBlocks.length > 0 ? fullTextBlocks[0].slice(0, 150) : undefined,
             },
             'Assistant response',
           );
+          // Stream each text block to the webchat WebSocket as it arrives
+          for (const text of fullTextBlocks) {
+            if (text) await sendChunk(text, false);
+          }
           break;
         }
 
@@ -495,6 +527,8 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
             },
             'Agent result',
           );
+          // Signal streaming is complete
+          await sendChunk('', true);
           break;
         }
 

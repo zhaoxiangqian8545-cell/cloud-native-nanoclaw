@@ -10,6 +10,7 @@ import {
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { config } from '../config.js';
 import { getRegistry } from '../adapters/registry.js';
+import { sendSessionEvent } from '../adapters/webchat/index.js';
 import type { ReplyContext } from '@clawbot/shared/channel-adapter';
 import type { ChannelType, SqsReplyPayload } from '@clawbot/shared';
 import type { Logger } from 'pino';
@@ -55,6 +56,24 @@ async function replyLoop(logger: Logger): Promise<void> {
       for (const msg of result.Messages) {
         try {
           const payload: SqsReplyPayload = JSON.parse(msg.Body!);
+
+          // Stream chunks — push directly to webchat WebSocket, skip adapter routing
+          if (payload.type === 'stream_chunk') {
+            const webSessionId = payload.replyContext?.webSessionId;
+            if (webSessionId) {
+              sendSessionEvent(webSessionId, {
+                type: 'chunk',
+                messageId: payload.messageId,
+                text: payload.text,
+                done: payload.done,
+              });
+            }
+            await sqs.send(new DeleteMessageCommand({
+              QueueUrl: config.queues.replies,
+              ReceiptHandle: msg.ReceiptHandle!,
+            }));
+            continue;
+          }
 
           // Route reply through adapter registry
           const registry = getRegistry();

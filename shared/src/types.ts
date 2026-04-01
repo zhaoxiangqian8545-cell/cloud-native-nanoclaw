@@ -353,7 +353,18 @@ export interface SqsFileReplyPayload {
   replyContext?: SqsReplyContext;
 }
 
-export type SqsReplyPayload = SqsTextReplyPayload | SqsFileReplyPayload;
+export interface SqsStreamChunkPayload {
+  type: 'stream_chunk';
+  botId: string;
+  groupJid: string;
+  channelType: ChannelType;
+  messageId: string;
+  text: string;
+  done: boolean;
+  replyContext?: SqsReplyContext;
+}
+
+export type SqsReplyPayload = SqsTextReplyPayload | SqsFileReplyPayload | SqsStreamChunkPayload;
 
 // --- API Request/Response Types ---
 

@@ -12,7 +12,8 @@ type WebEvent =
   | { type: 'connected'; sessionId: string }
   | { type: 'history'; messages: Message[] }
   | { type: 'message'; message: Message }
-  | { type: 'error'; error: string };
+  | { type: 'error'; error: string }
+  | { type: 'chunk'; messageId: string; text: string; done: boolean };
 
 interface WebSession {
   sessionId: string;
