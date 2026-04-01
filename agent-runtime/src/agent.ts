@@ -418,6 +418,7 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
         allowDangerouslySkipPermissions: true,
         settingSources: ['user', 'project'],
         maxTurns: payload.maxTurns,
+        includePartialMessages: !!sqsStream,
         mcpServers: {
           nanoclawbot: {
             command: 'node',
@@ -466,6 +467,15 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
           break;
         }
 
+        case 'stream_event': {
+          // Token-level streaming delta — forward to webchat WebSocket immediately
+          const ev = (message as { event?: { type?: string; delta?: { type?: string; text?: string } } }).event;
+          if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text) {
+            await sendChunk(ev.delta.text, false);
+          }
+          break;
+        }
+
         case 'assistant': {
           const msg = (message as { message?: { content?: unknown[]; model?: string; usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number } } }).message;
           const usage = msg?.usage;
@@ -488,10 +498,6 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
             },
             'Assistant response',
           );
-          // Stream each text block to the webchat WebSocket as it arrives
-          for (const text of fullTextBlocks) {
-            if (text) await sendChunk(text, false);
-          }
           break;
         }
 
