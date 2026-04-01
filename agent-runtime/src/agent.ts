@@ -335,6 +335,11 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
   const replyQueueUrl = process.env.SQS_REPLIES_URL || '';
   const streamMessageId = `stream-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const sqsStream = webSessionId && replyQueueUrl ? new SQSClient({}) : null;
+  logger.info({ webSessionId: !!webSessionId, replyQueueSet: !!replyQueueUrl, streamingEnabled: !!sqsStream }, 'Streaming setup');
+
+  // Tracks total characters streamed so far — shared between stream_event and assistant fallback
+  // so they never double-send: whichever fires first owns the bytes it sends.
+  let lastStreamedLength = 0;
 
   const sendChunk = async (text: string, done: boolean) => {
     if (!sqsStream) return;
@@ -472,6 +477,7 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
           const ev = (message as { event?: { type?: string; delta?: { type?: string; text?: string } } }).event;
           if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text) {
             await sendChunk(ev.delta.text, false);
+            lastStreamedLength += ev.delta.text.length;
           }
           break;
         }
@@ -486,6 +492,15 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
           const content = msg?.content as Array<{ type: string; name?: string; id?: string; text?: string }> | undefined;
           const toolUses = content?.filter((b) => b.type === 'tool_use').map((b) => b.name) || [];
           const fullTextBlocks = content?.filter((b) => b.type === 'text').map((b) => b.text || '') || [];
+          // Assistant-case fallback: if stream_event didn't cover this text yet, send the delta.
+          // With includePartialMessages:true we get intermediate assistant messages as content grows,
+          // so this provides progressive streaming even when stream_event isn't emitted.
+          const fullText = fullTextBlocks.join('');
+          if (sqsStream && fullText.length > lastStreamedLength) {
+            const delta = fullText.slice(lastStreamedLength);
+            await sendChunk(delta, false);
+            lastStreamedLength = fullText.length;
+          }
           logger.info(
             {
               model: msg?.model,
@@ -539,7 +554,7 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
         }
 
         default:
-          logger.debug({ type: message.type, messageCount }, 'SDK message');
+          logger.info({ type: message.type, messageCount }, 'SDK unhandled message type');
       }
     }
   } catch (err) {
