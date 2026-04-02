@@ -461,30 +461,37 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
   let lastStreamedText = '';
   // Guard: only send suggestions once even if SDK emits multiple result messages.
   let suggestionsSent = false;
+  // True once any stream_event fires — disables the assistant-message fallback path.
+  let hasStreamEvent = false;
 
-  const sendChunk = async (text: string, done: boolean) => {
-    if (!sqsStream) return;
-    // Replace (not append) — each chunk carries full accumulated text, so lastStreamedText
-    // always reflects the complete response seen so far.
-    if (text) lastStreamedText = text;
-    try {
-      await sqsStream.send(new SendMessageCommand({
-        QueueUrl: replyQueueUrl,
-        MessageBody: JSON.stringify({
-          type: 'stream_chunk',
-          botId: payload.botId,
-          groupJid: payload.groupJid,
-          channelType: payload.channelType,
-          messageId: streamMessageId,
-          text,
-          done,
-          replyContext: payload.replyContext,
-        }),
-      }));
-    } catch (err) {
-      logger.warn({ err }, 'Failed to send stream chunk');
-    }
+  // Send a snapshot of the full streamed text so far (not a delta).
+  // Snapshots are idempotent: out-of-order SQS delivery just shows an older snapshot, not garbled text.
+  // Returns a promise so the done:true signal can wait for the final snapshot to land first.
+  const sendSnapshot = (done: boolean): Promise<void> => {
+    if (!sqsStream) return Promise.resolve();
+    const text = lastStreamedText;
+    return sqsStream.send(new SendMessageCommand({
+      QueueUrl: replyQueueUrl,
+      MessageBody: JSON.stringify({
+        type: 'stream_chunk',
+        botId: payload.botId,
+        groupJid: payload.groupJid,
+        channelType: payload.channelType,
+        messageId: streamMessageId,
+        text,
+        done,
+        replyContext: payload.replyContext,
+      }),
+    })).then(() => { /* ok */ }).catch((err: unknown) => {
+      logger.warn({ err }, 'Failed to send stream snapshot');
+    });
   };
+
+  // Track when we last sent a snapshot and the promise for it.
+  // We throttle to ~10 snapshots/sec so the loop is never blocked by SQS latency.
+  let snapshotLastSentAt = 0;
+  let lastSnapshotPromise: Promise<void> = Promise.resolve();
+  const SNAPSHOT_INTERVAL_MS = 100;
 
   // Discover additional directories mounted at /workspace/extra/*
   // (same pattern as NanoClaw for plugin directories)
@@ -597,9 +604,20 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
         }
 
         case 'stream_event': {
-          // Not used for sending — fine-grained token deltas sent via SQS standard queue
-          // arrive out of order and corrupt the display. Streaming is handled by the
-          // assistant case which sends full accumulated text instead.
+          // Token-level delta — primary streaming path.
+          // Do NOT await SQS here — that would block the loop and cause all tokens to pile up.
+          // Instead accumulate text and fire a snapshot every SNAPSHOT_INTERVAL_MS.
+          const ev = (message as { event?: { type?: string; delta?: { type?: string; text?: string } } }).event;
+          if (ev?.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text) {
+            hasStreamEvent = true;
+            lastStreamedText += ev.delta.text;
+            lastStreamedLength += ev.delta.text.length;
+            const now = Date.now();
+            if (now - snapshotLastSentAt >= SNAPSHOT_INTERVAL_MS) {
+              snapshotLastSentAt = now;
+              lastSnapshotPromise = sendSnapshot(false);
+            }
+          }
           break;
         }
 
@@ -613,15 +631,14 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
           const content = msg?.content as Array<{ type: string; name?: string; id?: string; text?: string }> | undefined;
           const toolUses = content?.filter((b) => b.type === 'tool_use').map((b) => b.name) || [];
           const fullTextBlocks = content?.filter((b) => b.type === 'text').map((b) => b.text || '') || [];
-          // Send full accumulated text (not just the delta) on each intermediate assistant message.
-          // With includePartialMessages:true the SDK fires this as content grows.
-          // Sending full text means each SQS message is self-contained: out-of-order delivery
-          // only shows an older snapshot, never garbled/interleaved characters.
-          // lastStreamedLength guards against re-sending when text hasn't changed.
+          // Fallback streaming: only used when stream_event hasn't fired (some SDK/provider
+          // configurations don't emit stream_event). When stream_event IS active we skip this
+          // entirely to prevent double-sending the same tokens.
           const fullText = fullTextBlocks.join('');
-          if (sqsStream && fullText.length > lastStreamedLength) {
-            await sendChunk(fullText, false);
+          if (sqsStream && !hasStreamEvent && fullText.length > lastStreamedLength) {
+            lastStreamedText += fullText.slice(lastStreamedLength);
             lastStreamedLength = fullText.length;
+            lastSnapshotPromise = sendSnapshot(false);
           }
           logger.info(
             {
@@ -670,8 +687,12 @@ async function runAgentQuery(params: QueryParams): Promise<InvocationResult> {
             },
             'Agent result',
           );
-          // Signal streaming is complete
-          await sendChunk('', true);
+          // Signal streaming is complete.
+          // First flush any buffered text that hasn't been sent yet,
+          // then wait for it to land before sending the done:true signal.
+          lastSnapshotPromise = sendSnapshot(false);
+          await lastSnapshotPromise;
+          await sendSnapshot(true);
 
           // Generate follow-up suggestions for webchat (fire-and-forget, never blocks the agent)
           if (!suggestionsSent && webSessionId && replyQueueUrl && lastStreamedText.trim()) {
