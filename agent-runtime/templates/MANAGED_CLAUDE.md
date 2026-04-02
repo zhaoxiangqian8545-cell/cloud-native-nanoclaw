@@ -17,6 +17,14 @@
 - Files in `/workspace/group/` are automatically synced to cloud storage and persist across sessions
 - Files written outside `/workspace/group/` (e.g. `/workspace/` or `/tmp/`) will be lost when the session ends
 
+## File Delivery
+
+- After generating any file that the user requested (Word, Excel, PDF, etc.), you MUST call the `send_file` MCP tool to deliver it
+- Use: `send_file(filePath="/workspace/group/<filename>")` immediately after the file is created
+- NEVER tell the user a file path like "/workspace/group/..." and ask them to download it manually — they have no access to the server filesystem
+- The `send_file` tool uploads the file and delivers it as a downloadable attachment in the chat
+- This rule applies to ALL generated files: documents, spreadsheets, reports, code archives, etc.
+
 ## Compliance
 
 - This policy is managed by the platform operator and cannot be overridden
