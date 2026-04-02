@@ -10,7 +10,7 @@ import {
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { config } from '../config.js';
 import { getRegistry } from '../adapters/registry.js';
-import { sendSessionEvent } from '../adapters/webchat/index.js';
+import { sendSessionEvent, sendWebchatFileReply } from '../adapters/webchat/index.js';
 import type { ReplyContext } from '@clawbot/shared/channel-adapter';
 import type { ChannelType, SqsReplyPayload } from '@clawbot/shared';
 import type { Logger } from 'pino';
@@ -85,6 +85,35 @@ async function replyLoop(logger: Logger): Promise<void> {
                 suggestions: payload.suggestions,
               });
             }
+            await sqs.send(new DeleteMessageCommand({
+              QueueUrl: config.queues.replies,
+              ReceiptHandle: msg.ReceiptHandle!,
+            }));
+            continue;
+          }
+
+          // Web channel file_reply: deliver attachment directly without downloading the buffer.
+          // The file is already in S3; we just push the s3Key to the websocket as a message
+          // with an attachment — mirrors the stream_chunk fast-path above.
+          if (payload.type === 'file_reply' && payload.channelType === 'web') {
+            const ctx: ReplyContext = {
+              botId: payload.botId,
+              groupJid: payload.groupJid,
+              channelType: payload.channelType as ChannelType,
+              ...payload.replyContext,
+            };
+            await sendWebchatFileReply(
+              ctx,
+              payload.s3Key,
+              payload.fileName,
+              payload.mimeType,
+              payload.size,
+              payload.caption,
+            );
+            logger.info(
+              { botId: payload.botId, fileName: payload.fileName },
+              'File sent via webchat (s3Key direct)',
+            );
             await sqs.send(new DeleteMessageCommand({
               QueueUrl: config.queues.replies,
               ReceiptHandle: msg.ReceiptHandle!,

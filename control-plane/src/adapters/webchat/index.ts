@@ -6,7 +6,7 @@ import { WebSocket } from 'ws';
 import { BaseChannelAdapter } from '../base.js';
 import type { ReplyContext, ReplyOptions } from '@clawbot/shared/channel-adapter';
 import { putMessage } from '../../services/dynamo.js';
-import type { Message } from '@clawbot/shared';
+import type { Message, Attachment } from '@clawbot/shared';
 
 type WebEvent =
   | { type: 'connected'; sessionId: string }
@@ -132,5 +132,53 @@ export class WebChatAdapter extends BaseChannelAdapter {
       },
       'Web reply sent',
     );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// sendWebchatFileReply — Deliver a file to webchat without re-uploading to S3.
+// The file is already in S3 (uploaded by the agent runtime). We just create
+// a Message record with the attachment metadata and push it to the websocket.
+// Called directly by the reply-consumer for web channel file_reply payloads.
+// ---------------------------------------------------------------------------
+
+export async function sendWebchatFileReply(
+  ctx: ReplyContext,
+  s3Key: string,
+  fileName: string,
+  mimeType: string,
+  size?: number,
+  caption?: string,
+): Promise<void> {
+  const attachType: Attachment['type'] =
+    mimeType.startsWith('image/') ? 'image' :
+    mimeType.startsWith('video/') ? 'video' :
+    mimeType.startsWith('audio/') ? 'audio' : 'document';
+
+  const message: Message = {
+    botId: ctx.botId,
+    groupJid: ctx.groupJid,
+    timestamp: new Date().toISOString(),
+    messageId: `web-bot-file-${randomUUID()}`,
+    sender: 'bot',
+    senderName: 'Bot',
+    content: caption || '',
+    isFromMe: true,
+    isBotMessage: true,
+    channelType: 'web',
+    ttl: Math.floor(Date.now() / 1000) + 90 * 24 * 3600,
+    attachments: [{ type: attachType, s3Key, mimeType, fileName, size }],
+  };
+
+  await putMessage(message);
+
+  const event: WebEvent = { type: 'message', message };
+  if (ctx.webSessionId) {
+    sendSessionEvent(ctx.webSessionId, event);
+  } else {
+    const key = groupKey(ctx.botId, ctx.groupJid);
+    for (const sessionId of groupSessions.get(key) ?? []) {
+      sendSessionEvent(sessionId, event);
+    }
   }
 }
