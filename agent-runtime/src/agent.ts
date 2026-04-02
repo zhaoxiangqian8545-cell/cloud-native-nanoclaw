@@ -39,10 +39,57 @@ import { getScopedClients } from './scoped-credentials.js';
 import { setBusy, setIdle } from './server.js';
 import { startCredentialProxy, type CredentialProxy } from './credential-proxy.js';
 import { createToolWhitelistHook } from './tool-whitelist.js';
+import { sendFile, type McpToolContext } from './mcp-tools.js';
 
 const SESSION_BUCKET = process.env.SESSION_BUCKET || '';
 const DEFAULT_MODEL = 'global.anthropic.claude-sonnet-4-6';
 const secretsManager = new SecretsManagerClient({});
+
+// ---------------------------------------------------------------------------
+// Auto-send new document files created during a session
+// ---------------------------------------------------------------------------
+
+// File extensions that are always user-intended output (never system/memory files)
+const AUTO_SEND_EXTS = new Set(['.docx', '.xlsx', '.pptx', '.pdf', '.zip', '.csv']);
+
+/**
+ * Snapshot the names of files directly inside /workspace/group/ (top-level only).
+ * Used to detect files created by the agent during a session.
+ */
+function snapshotGroupFiles(): Set<string> {
+  const result = new Set<string>();
+  try {
+    for (const entry of fs.readdirSync('/workspace/group', { withFileTypes: true })) {
+      if (entry.isFile()) result.add(entry.name);
+    }
+  } catch { /* dir may not exist yet */ }
+  return result;
+}
+
+/**
+ * After the agent query, find any new document files added to /workspace/group/
+ * and auto-deliver them to the user via send_file — so the user always gets a
+ * download button regardless of whether the AI called send_file itself.
+ */
+async function autoSendNewDocuments(
+  ctx: McpToolContext,
+  before: Set<string>,
+  logger: pino.Logger,
+): Promise<void> {
+  const after = snapshotGroupFiles();
+  for (const name of after) {
+    if (before.has(name)) continue; // existed before this session
+    const ext = path.extname(name).toLowerCase();
+    if (!AUTO_SEND_EXTS.has(ext)) continue;
+    const filePath = `/workspace/group/${name}`;
+    try {
+      await sendFile(ctx, filePath);
+      logger.info({ filePath }, 'Auto-sent new document file');
+    } catch (err) {
+      logger.warn({ err, filePath }, 'Auto-send failed for new document file');
+    }
+  }
+}
 
 // Session switch detection — track which bot+group we last served
 let currentSessionKey: string | undefined;
@@ -221,6 +268,9 @@ async function _handleInvocation(
 
   const agentPrompt = prompt;
 
+  // 5b. Snapshot /workspace/group/ before the agent runs — used to detect new files afterwards
+  const groupFilesBefore = snapshotGroupFiles();
+
   // 6. Build environment for Claude Agent SDK
   //    Set provider-specific env vars based on modelProvider
   const sdkEnv: Record<string, string | undefined> = {
@@ -294,6 +344,21 @@ async function _handleInvocation(
   // 9. Sync session and memory back to S3
   logger.info('Syncing session back to S3');
   await syncToS3(s3, SESSION_BUCKET, syncPaths, logger);
+
+  // 9b. Auto-send any new document files created during this session.
+  // This ensures users always get a download button even if the AI forgot to call send_file.
+  if (result.status === 'success') {
+    const autoSendCtx: McpToolContext = {
+      botId,
+      botName,
+      groupJid,
+      userId,
+      channelType: payload.channelType,
+      replyContext: payload.replyContext,
+      clients: scopedClients,
+    };
+    await autoSendNewDocuments(autoSendCtx, groupFilesBefore, logger);
+  }
 
   logger.info(
     { status: result.status, sessionId: result.newSessionId },
