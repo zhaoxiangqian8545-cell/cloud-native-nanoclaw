@@ -1,6 +1,7 @@
 // ClawBot Cloud — Tasks API Routes
 // CRUD operations for scheduled task management with EventBridge Scheduler integration
 
+import { createHash } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { ulid } from 'ulid';
@@ -68,6 +69,14 @@ function schedulerConfigured(): boolean {
   return !!(config.scheduler.roleArn && config.scheduler.messageQueueArn);
 }
 
+function buildScheduleName(botId: string, taskId: string): string {
+  const digest = createHash('sha1')
+    .update(`${botId}:${taskId}`)
+    .digest('hex')
+    .slice(0, 24);
+  return `ncb-${digest}`;
+}
+
 export const tasksRoutes: FastifyPluginAsync = async (app) => {
   // List tasks for a bot
   app.get<{ Params: { botId: string } }>('/', async (request, reply) => {
@@ -120,7 +129,7 @@ export const tasksRoutes: FastifyPluginAsync = async (app) => {
 
     // Create EventBridge Schedule if scheduler is configured
     if (schedulerConfigured()) {
-      const scheduleName = `nanoclawbot-${botId}-${taskId}`;
+      const scheduleName = buildScheduleName(botId, taskId);
       const expression = toScheduleExpression(
         body.scheduleType,
         body.scheduleValue,
@@ -204,7 +213,7 @@ export const tasksRoutes: FastifyPluginAsync = async (app) => {
 
       // Update EventBridge Schedule when status OR schedule changes
       if ((updates.status || updates.scheduleValue) && schedulerConfigured()) {
-        const scheduleName = `nanoclawbot-${botId}-${taskId}`;
+        const scheduleName = buildScheduleName(botId, taskId);
 
         try {
           // Get current schedule to preserve all fields (UpdateSchedule overwrites everything)
@@ -267,7 +276,7 @@ export const tasksRoutes: FastifyPluginAsync = async (app) => {
 
       // Delete EventBridge Schedule if scheduler is configured
       if (schedulerConfigured()) {
-        const scheduleName = `nanoclawbot-${botId}-${taskId}`;
+        const scheduleName = buildScheduleName(botId, taskId);
         try {
           await scheduler.send(
             new DeleteScheduleCommand({ Name: scheduleName }),
